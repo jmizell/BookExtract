@@ -2,3 +2,4 @@ venv/
 .idea/
 images/
 out
+.env

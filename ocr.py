@@ -3,6 +3,7 @@ import base64
 import requests
 import json
 from dotenv import load_dotenv
+import concurrent.futures
 
 load_dotenv()
 
@@ -29,23 +30,160 @@ Requirements:
 
 Style Guide
   - Output as an array of objects. In the format of {"type":"section_type","content":"section content"}
-  - Types should be header, sub_header, chapter_header, paragraph, page_division, bold, block_indent.
+  - Types should be title, author, header, sub_header, chapter_header, paragraph, page_division, bold, block_indent.
+  - Ensure that your json strings are properly escaped and encoded.
 
 Example:
 [
-{"type":"header","content":"The Great Book Title"},
+{"type":"author","content":"A. Writer"},
+{"type":"title","content":"The Great Book Title"},
 {"type":"sub_header","content":"A guide to writing great book title"},
 {"type":"chapter_header","content":"1"},
-{"type":"paragraph","content":"Books are comprised of words on a page..."},
+{"type":"paragraph","content":"Books are comprised of words on a page."},
 {"type":"block_indent","content":"'This is a famous quote' - Some Guy"},
-{"type":"paragraph","content":"Some additional words go ina paragraph..."}
+{"type":"paragraph","content":"Some additional \"words\" go in a paragraph."}
 ]
 """
 IMAGE_DIRECTORY = "out"
+MAX_WORKERS = 15
+
+
+def handle_failure(payload: dict, failed_json, exception_message):
+
+    payload["messages"].append({
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": failed_json
+            }
+        ]
+    })
+    payload["messages"].append({
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "There was an error parsing your json, " + exception_message + ". Ensure that you've properly escaped your json strings."
+            }
+        ]
+    })
+
+    response = requests.post(API_URL, headers={
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {API_TOKEN}"
+    }, json=payload)
+
+    if response.status_code == 200:
+        response_data = response.json()
+        msg_content = response_data['choices'][0]['message']['content']
+        parsed = None
+        try:
+            parsed = list(json.loads(msg_content))
+        except Exception as e:
+            print(f'failed to parse json, {e}')
+            print(msg_content)
+
+        return parsed
+    else:
+        print(f"Error in API response for: {response.status_code}")
+        raise Exception(response.text)
+
+
+def process_image(filename):
+    """Process a single image file."""
+    if not filename.endswith(".txt"):
+        return None
+
+    txt_full_path = os.path.join(IMAGE_DIRECTORY, filename)
+    if not os.path.isfile(txt_full_path):
+        return None
+
+    img_full_path = os.path.join(IMAGE_DIRECTORY, filename.replace(".txt", ".png"))
+    if not os.path.isfile(img_full_path):
+        return None
+
+    json_full_path = os.path.join(IMAGE_DIRECTORY, filename.replace(".txt", ".json"))
+    if os.path.isfile(json_full_path):
+        print(f"Already processed {filename}")
+        return None
+
+    print(f"Processing {txt_full_path}")
+
+    try:
+        # Read the image file
+        with open(img_full_path, "rb") as f:
+            encoded_image = base64.b64encode(f.read()).decode("utf-8")
+        # Read the text file
+        with open(txt_full_path, "r") as f:
+            text_content = f.read()
+
+        # Prepare the API request payload
+        payload = {
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": OCR_PROMPT + "\n\n# OCR CONTENT\n\n" + text_content
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{encoded_image}"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 20000,
+            "response_format": {
+                "type": "json_object"
+            }
+        }
+
+        response = requests.post(API_URL,
+            headers={"Content-Type": "application/json","Authorization": f"Bearer {API_TOKEN}"},
+            json=payload)
+
+        if response.status_code == 200:
+            # Process and save the response
+            response_data = response.json()
+            msg_content = response_data['choices'][0]['message']['content']
+            try:
+                parsed = list(json.loads(msg_content))
+            except Exception as e:
+                print(f'Failed to parse json, {e}. Retrying')
+                parsed = handle_failure(payload, msg_content, str(e))
+                if not parsed:
+                    raise e
+
+            if len(parsed) == 0:
+                print(f"No sections exist in json output!")
+                return False
+
+            for i in range(len(parsed)):
+                parsed[i]["source"] = filename
+
+            # Save the markdown output
+            with open(json_full_path, "w") as f:
+                f.write(json.dumps(parsed, indent=2))
+
+            print(f"Successfully processed {filename}")
+            return True
+        else:
+            print(f"Error in API response for {filename}: {response.status_code}")
+            print(response.text)
+            return False
+
+    except Exception as e:
+        print(f"Error processing {filename}: {str(e)}")
+        return False
 
 
 def process_images():
-
     text_files = []
 
     for filename in os.listdir(IMAGE_DIRECTORY):
@@ -64,85 +202,20 @@ def process_images():
 
     text_files.sort()
 
-    # Get all files in the image directory
-    for filename in text_files:
-        if not filename.endswith(".txt"):
-            continue
+    # Process files concurrently with a thread pool
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # Submit all tasks and collect futures
+        futures = {executor.submit(process_image, filename): filename for filename in text_files}
 
-        txt_full_path = os.path.join(IMAGE_DIRECTORY, filename)
-        if not os.path.isfile(txt_full_path):
-            continue
-
-        img_full_path = os.path.join(IMAGE_DIRECTORY, filename.replace(".txt", ".png"))
-        if not os.path.isfile(img_full_path):
-            continue
-
-        json_full_path = os.path.join(IMAGE_DIRECTORY, filename.replace(".txt", ".json"))
-        if os.path.isfile(json_full_path):
-            continue
-
-        print(f"Processing {txt_full_path}")
-
-        try:
-            # Read the image file
-            with open(img_full_path, "rb") as f:
-                encoded_image = base64.b64encode(f.read()).decode("utf-8")
-            # Read the text file
-            with open(txt_full_path, "r") as f:
-                text_content = f.read()
-
-            # Prepare the API request payload
-            payload = {
-                "model": MODEL,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": OCR_PROMPT + "\n\n# OCR CONTENT\n\n" + text_content
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{encoded_image}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                "max_tokens": 20000
-            }
-
-            response = requests.post(API_URL, headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {API_TOKEN}"
-            }, json=payload)
-
-            if response.status_code == 200:
-                # Process and save the response
-                response_data = response.json()
-                msg_content = response_data['choices'][0]['message']['content']
-                parsed = list(json.loads(msg_content))
-
-                print("DEBUG -- -- \n", json.dumps(parsed, indent=2))
-
-                if len(parsed) == 0:
-                    print(f"No sections exist in json output!")
-                    raise ValueError
-
-                # Save the markdown output
-                with open(json_full_path, "w") as f:
-                    f.write(json.dumps(parsed, indent=2))
-
-                print(f"Successfully processed {filename}")
-            else:
-                print(f"Error in API response for {filename}: {response.status_code}")
-                print(response.text)
-
-        except Exception as e:
-            print(f"Error processing {filename}: {str(e)}")
-
+        # Process results as they complete
+        for future in concurrent.futures.as_completed(futures):
+            filename = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    print(f"Completed processing {filename}")
+            except Exception as e:
+                print(f"Worker exception for {filename}: {str(e)}")
 
 if __name__ == "__main__":
     process_images()

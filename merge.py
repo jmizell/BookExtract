@@ -20,45 +20,32 @@ These are two segments of text from an OCR task. The first segment is from the e
 from the beginning of the following page. Sometimes during OCR content is split between one page, and the next. We
 need to identify when this happens, and join the content is necessary.
 
-To join the segments write out a single segment with the combine content. To leave the segments as they are, just 
-write them out as they are
-
 Examples:
 
 ## Example Of Split Content That Needs To Be Joined
 First and second page segments
-```
 [
 {"type":"paragraph","content":"Books are comprised of words on a page"},
 {"type":"paragraph","content":"that make up long sentences of text."},
 ]
-```
-To join, output this
-[
-{"type":"paragraph","content":"Books are comprised of words on a page that make up long sentences of text."}
-]
+
+To join these sections, output this
+action("merge")
 
 ## Example Of Segments that Should Not Be Joined
 First and second page segments
-```
 [
 {"type":"paragraph","content":"Books are comprised of words on a page that make up long sentences of text."},
 {"type":"paragraph","content":"In this second paragraph, I shall refute the statement from the first."},
 ]
-```
-To leave as is, output this
-```
-[
-{"type":"paragraph","content":"Books are comprised of words on a page that make up long sentences of text."},
-{"type":"paragraph","content":"In this second paragraph, I shall refute the statement from the first."},
-]
-```
 
+To leave as is, output this
+action("noop")
 """
 IMAGE_DIRECTORY = "out"
 
 
-def process_images():
+def process_sections():
 
     sections = []
     json_files = []
@@ -91,6 +78,20 @@ def process_images():
                 sections = section
                 continue
 
+            # Check if merge is likely needed before calling LLM
+            last_section_content = sections[len(sections) - 1]["content"]
+            first_new_section_content = section[0]["content"]
+
+            # If last section ends with punctuation and new section starts with capital letter,
+            # assume no merge needed
+            ends_with_punctuation = last_section_content and last_section_content[-1] in ['.', '!', '?', ':', ';']
+            starts_with_capital = first_new_section_content and first_new_section_content[0].isupper()
+
+            if ends_with_punctuation and starts_with_capital:
+                print(f"No merge likely needed. Skipping LLM call.")
+                sections = sections + section
+                continue
+
             # Prepare the API request payload
             payload = {
                 "model": MODEL,
@@ -105,7 +106,10 @@ def process_images():
                         ]
                     }
                 ],
-                "max_tokens": 20000
+                "max_tokens": 20000,
+                "response_format": {
+                    "type": "json_object"
+                }
             }
 
             response = requests.post(API_URL, headers={
@@ -117,17 +121,13 @@ def process_images():
                 # Process and save the response
                 response_data = response.json()
                 msg_content = response_data['choices'][0]['message']['content']
-                parsed = list(json.loads(msg_content))
 
-                if len(parsed) == 1:
+                if 'action("merge")' in msg_content:
                     print(f"Merging sections")
-                    sections[len(sections)-1] = parsed[0]
+                    sections[len(sections)-1]["content"] =  sections[len(sections)-1]["content"] + " " + section[0]["content"]
                     section = section[1:]
-                elif len(parsed) == 2:
-                    print(f"No section merge will be done")
                 else:
-                    print(f"Invalid response from model, {response.text}")
-                    raise ValueError
+                    print(f"No section merge will be done")
 
                 sections = sections + section
                 print(f"Successfully processed {filename}")
@@ -146,4 +146,4 @@ def process_images():
 
 
 if __name__ == "__main__":
-    process_images()
+    process_sections()

@@ -4,7 +4,7 @@ from ebooklib import epub
 import uuid
 
 
-def generate_epub_from_json(json_file, output_file):
+def generate_epub_from_json(json_file):
     """Generate an EPUB file from the processed JSON content."""
 
     # Read the JSON file
@@ -99,34 +99,36 @@ def generate_epub_from_json(json_file, output_file):
         elif item['type'] in ('cover','image') and 'image' in item:
             # Add image to the content
             img_path = os.path.join(os.path.dirname(json_file), item['image'])
-            if os.path.exists(img_path):
-                img_filename = f"image_{image_counter}.png"
-                image_counter += 1
+            if not os.path.exists(img_path):
+                raise ValueError(f"image {img_path} not found")
 
-                # Read the image
-                with open(img_path, 'rb') as f:
-                    img_content = f.read()
+            img_filename = f"image_{image_counter}.png"
+            image_counter += 1
 
-                # Create image item
-                img_item = epub.EpubItem(
-                    uid=f"image_{len(all_images) + 1}",
-                    file_name=f"images/{img_filename}",
-                    media_type="image/png",
-                    content=img_content
+            # Read the image
+            with open(img_path, 'rb') as f:
+                img_content = f.read()
+
+            # Create image item
+            img_item = epub.EpubItem(
+                uid=f"image_{len(all_images) + 1}",
+                file_name=f"images/{img_filename}",
+                media_type="image/png",
+                content=img_content
+            )
+            book.add_item(img_item)
+            all_images.append(img_item)
+
+            # Add image reference to the chapter content
+            caption = item.get('caption', '')
+            if caption:
+                current_chapter_content.append(
+                    f'<div class="image-container"><img src="images/{img_filename}" alt="{caption}"/><p class="caption">{caption}</p></div>'
                 )
-                book.add_item(img_item)
-                all_images.append(img_item)
-
-                # Add image reference to the chapter content
-                caption = item.get('caption', '')
-                if caption:
-                    current_chapter_content.append(
-                        f'<div class="image-container"><img src="images/{img_filename}" alt="{caption}"/><p class="caption">{caption}</p></div>'
-                    )
-                else:
-                    current_chapter_content.append(
-                        f'<div class="image-container"><img src="images/{img_filename}" alt="Image"/></div>'
-                    )
+            else:
+                current_chapter_content.append(
+                    f'<div class="image-container"><img src="images/{img_filename}" alt="Image"/></div>'
+                )
         else:
             # Build HTML content based on the type
             if item['type'] == 'paragraph':
@@ -229,13 +231,12 @@ def generate_epub_from_json(json_file, output_file):
     book.spine = ['nav'] + chapters
 
     # Write the EPUB file
-    epub.write_epub(output_file, book, {})
-    return output_file
+    output_epub = os.path.join(directory, f"{title} - {author}.epub")
+    epub.write_epub(output_epub, book, {})
+    print(f"EPUB file created: {output_epub}")
 
 
 if __name__ == "__main__":
     directory = "out"
     book_json = os.path.join(directory, "book.json")
-    output_epub = os.path.join(directory, "book.epub")
-    generate_epub_from_json(book_json, output_epub)
-    print(f"EPUB file created: {output_epub}")
+    generate_epub_from_json(book_json)

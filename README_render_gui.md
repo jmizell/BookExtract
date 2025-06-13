@@ -132,7 +132,7 @@ When validating JSON, if required sections (title, author, cover) are missing:
 - This ensures your JSON always has the minimum required structure for EPUB generation
 
 ### Sample JSON Structure
-The application includes a default sample JSON that demonstrates all supported elements:
+Here's an example JSON structure that demonstrates all supported elements:
 
 ```json
 [

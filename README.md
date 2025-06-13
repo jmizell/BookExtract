@@ -18,9 +18,10 @@ This project provides a complete pipeline with intuitive GUI applications for:
 - **User-Friendly GUI Applications**: Intuitive interfaces replace complex command-line scripts
 - **Interactive Image Processing**: Mouse-based crop selection with real-time preview
 - **AI-Powered OCR Correction**: Automatically fixes OCR errors and structures content
+- **Unified Intermediate Format**: Common representation for both EPUB and audiobook generation
 - **Progress Tracking**: Real-time status updates and batch processing indicators
 - **Flexible API Support**: Works with OpenAI, Anthropic, OpenRouter, and other compatible APIs
-- **Integrated Workflow**: Seamless pipeline from screenshots to finished EPUB
+- **Integrated Workflow**: Seamless pipeline from screenshots to finished EPUB and M4B audiobooks
 - **Error Handling**: Built-in validation and user-friendly error messages
 
 ## Prerequisites
@@ -143,6 +144,36 @@ This creates a professional M4B audiobook with:
 - Optimized for audiobook players
 
 See [EPUB_TO_M4B.md](EPUB_TO_M4B.md) for detailed documentation.
+
+## Intermediate Representation
+
+BookExtract now includes a unified intermediate representation that bridges the gap between different processing pipelines. This format provides:
+
+- **Unified Structure**: Single format that works with both EPUB and M4B generation
+- **Rich Metadata**: Comprehensive book information including title, author, language, etc.
+- **Structured Content**: Hierarchical organization with chapters and typed content sections
+- **Format Conversion**: Seamless conversion between legacy and new formats
+- **Enhanced Features**: Word counting, content analysis, and extensible design
+
+### Key Files
+- `book_intermediate.py` - Core intermediate representation module
+- `intermediate_to_m4b.py` - M4B pipeline integration
+- `INTERMEDIATE_FORMAT.md` - Complete format documentation
+- `INTERMEDIATE_SUMMARY.md` - Implementation overview
+
+### Usage
+```bash
+# Generate intermediate format from EPUB
+python epub_extractor.py book.epub --intermediate
+
+# Convert intermediate to M4B-ready files
+python intermediate_to_m4b.py book_intermediate.json -o m4b_ready/
+
+# Use in render GUI
+# File → Open Intermediate... or Save Intermediate As...
+```
+
+The intermediate format maintains full backward compatibility while providing enhanced structure for future development.
 
 ## Customization
 

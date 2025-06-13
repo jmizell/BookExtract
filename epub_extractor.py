@@ -11,6 +11,7 @@ import re
 from ebooklib import epub
 from bs4 import BeautifulSoup
 import argparse
+from book_intermediate import BookIntermediate, BookConverter
 
 
 def clean_text(text):
@@ -154,6 +155,8 @@ def main():
     parser.add_argument('epub_file', help='Path to EPUB file')
     parser.add_argument('-o', '--output', default='epub_extracted', 
                        help='Output directory for extracted text files')
+    parser.add_argument('--intermediate', action='store_true',
+                       help='Also generate intermediate representation format')
     
     args = parser.parse_args()
     
@@ -163,6 +166,15 @@ def main():
         print(f"Title: {book_info['metadata']['title']}")
         print(f"Author: {book_info['metadata']['author']}")
         print(f"Chapters: {book_info['total_chapters']}")
+        
+        # Generate intermediate representation if requested
+        if args.intermediate:
+            book_info_path = os.path.join(args.output, "book_info.json")
+            intermediate = BookConverter.from_epub_extractor(book_info_path)
+            
+            intermediate_path = os.path.join(args.output, "book_intermediate.json")
+            intermediate.save_to_file(intermediate_path)
+            print(f"Intermediate representation saved to: {intermediate_path}")
         
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)

@@ -540,19 +540,15 @@ class OCRGUI:
             # Process files concurrently
             max_workers = int(self.max_workers_var.get())
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit all tasks
-                futures = {executor.submit(self.process_single_file, txt_file): txt_file for txt_file in text_files}
-                
-                # Process results as they complete
+            if max_workers == 1:
+                # Sequential processing for debugging
                 completed = 0
-                for future in concurrent.futures.as_completed(futures):
+                for txt_file in text_files:
                     if not self.is_processing:
                         return False
-                        
-                    txt_file = futures[future]
+                    
                     try:
-                        result = future.result()
+                        result = self.process_single_file(txt_file)
                         if result:
                             completed += 1
                             progress_value = (self.total_files // 2) + (completed * (self.total_files // 2) // len(text_files))
@@ -561,7 +557,31 @@ class OCRGUI:
                         else:
                             self.root.after(0, self.log_message, f"Failed LLM processing for {txt_file.name}")
                     except Exception as e:
-                        self.root.after(0, self.log_message, f"Worker exception for {txt_file.name}: {e}")
+                        self.root.after(0, self.log_message, f"Processing exception for {txt_file.name}: {e}")
+            else:
+                # Concurrent processing
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit all tasks
+                    futures = {executor.submit(self.process_single_file, txt_file): txt_file for txt_file in text_files}
+                    
+                    # Process results as they complete
+                    completed = 0
+                    for future in concurrent.futures.as_completed(futures):
+                        if not self.is_processing:
+                            return False
+                            
+                        txt_file = futures[future]
+                        try:
+                            result = future.result()
+                            if result:
+                                completed += 1
+                                progress_value = (self.total_files // 2) + (completed * (self.total_files // 2) // len(text_files))
+                                self.root.after(0, self.update_progress, progress_value, f"LLM cleanup: {completed}/{len(text_files)}")
+                                self.root.after(0, self.log_message, f"Completed LLM processing for {txt_file.name}")
+                            else:
+                                self.root.after(0, self.log_message, f"Failed LLM processing for {txt_file.name}")
+                        except Exception as e:
+                            self.root.after(0, self.log_message, f"Worker exception for {txt_file.name}: {e}")
                         
             return True
             
@@ -713,6 +733,9 @@ action("noop")
             img_file = txt_file.with_suffix('.png')
             json_file = txt_file.with_suffix('.json')
             
+            # Debug logging
+            self.root.after(0, self.log_message, f"Processing {txt_file.name} -> {json_file.name}")
+            
             if not img_file.exists():
                 # Try other image extensions
                 for ext in ['.jpg', '.jpeg', '.bmp', '.tiff']:
@@ -721,9 +744,11 @@ action("noop")
                         img_file = alt_img
                         break
                 else:
+                    self.root.after(0, self.log_message, f"No image file found for {txt_file.name}")
                     return False
                     
             if json_file.exists():
+                self.root.after(0, self.log_message, f"Skipping {txt_file.name} - already processed")
                 return True  # Already processed
                 
             # Read the image and text files
@@ -816,7 +841,8 @@ Example:
                     # Save JSON output
                     with open(json_file, "w", encoding='utf-8') as f:
                         json.dump(parsed, f, indent=2, ensure_ascii=False)
-                        
+                    
+                    self.root.after(0, self.log_message, f"Saved {len(parsed)} sections to {json_file.name}")
                     return True
                     
                 except json.JSONDecodeError as e:
@@ -872,7 +898,8 @@ Example:
                 # Save JSON output
                 with open(json_file, "w", encoding='utf-8') as f:
                     json.dump(parsed, f, indent=2, ensure_ascii=False)
-                    
+                
+                self.root.after(0, self.log_message, f"Retry saved {len(parsed)} sections to {json_file.name}")
                 return True
                 
         except Exception:

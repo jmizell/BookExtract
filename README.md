@@ -28,7 +28,7 @@ This project provides a complete pipeline for:
 2. Install required dependencies:
    ```
    sudo apt-get install imagemagick tesseract-ocr xdotool python3-tk
-   pip install ebooklib python-dotenv requests
+   pip install -r requirements.txt
    ```
    Note: `python3-tk` is needed for the GUI interface
 3. Create a `.env` file with the following variables:
@@ -75,47 +75,71 @@ See `README_GUI.md` for detailed GUI usage instructions.
 
 Crop captured images to focus on the book content:
 
+**Option A: GUI Interface (Recommended)**
+```bash
+python3 crop_gui.py
+```
+
+**Option B: Command Line**
 ```bash
 bash crop.sh
 ```
 
-This script removes margins and UI elements, saving cropped images to `out/` directory.
+The GUI version provides:
+- Interactive image preview with mouse-based crop area selection
+- Real-time crop preview and coordinate adjustment
+- Batch processing with progress tracking
+- Image navigation to review and adjust settings
+
+Both methods remove margins and UI elements, saving cropped images to `out/` directory.
 
 ### 3. Extract Text with OCR
 
-Run OCR on the cropped images:
+Extract text from cropped images using OCR:
 
+**Option A: GUI Interface (Recommended)**
 ```bash
-bash ocr.sh
+python3 ocr_gui.py
 ```
 
-This extracts raw text using Tesseract and saves it to `.txt` files.
-
-### 4. Process with AI
-
-Enhance OCR results and structure the content:
-
+**Option B: Command Line**
 ```bash
+# Basic OCR only
+bash ocr.sh
+
+# Then AI processing
 python ocr.py
 ```
 
-This script:
-- Sends each page image and OCR text to the AI
-- Corrects OCR mistakes
-- Formats content into structured JSON
-- Identifies headers, paragraphs, and other elements
+The GUI version provides:
+- User-friendly interface for complete OCR pipeline (OCR + LLM cleanup + merge)
+- Configurable API settings with connection testing
+- Real-time progress tracking for batch processing
+- Results preview functionality including final merged book.json
+- Support for basic OCR-only or full pipeline processing
+- Optional merge step to fix content split across page breaks
 
-### 5. Merge Content Across Pages
+The command line approach:
+1. `ocr.sh` extracts raw text using Tesseract and saves it to `.txt` files
+2. `ocr.py` sends each page image and OCR text to the AI to:
+   - Correct OCR mistakes
+   - Format content into structured JSON
+   - Identify headers, paragraphs, and other elements
+3. `merge.py` (optional) fixes content split across page breaks
 
-Fix content that was split across page breaks:
+Note: The GUI version includes all three steps in a single interface, while the command line requires running each script separately.
+
+### 4. Merge Content Across Pages (Command Line Only)
+
+If using the command line approach, fix content that was split across page breaks:
 
 ```bash
 python merge.py
 ```
 
-This intelligently identifies and joins paragraphs that continue from one page to the next.
+This intelligently identifies and joins paragraphs that continue from one page to the next. The GUI version includes this step automatically when "Include merge step" is enabled.
 
-### 6. Generate EPUB
+### 5. Generate EPUB
 
 Create the final e-book:
 
@@ -125,7 +149,7 @@ python render.py
 
 This produces an EPUB file with proper chapters, formatting, and metadata.
 
-### 7. Generate Audio (Optional)
+### 6. Generate Audio (Optional)
 
 If you want an audio version of your book:
 

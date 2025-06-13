@@ -3,12 +3,12 @@
 GUI version of crop.sh - A tkinter interface for batch image cropping.
 
 This application provides a user-friendly interface to crop multiple images
-with preview functionality and mouse-based crop area selection.
+with preview functionality and mouse-based crop area selection. Uses Pillow
+for image processing, eliminating the need for external dependencies.
 """
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import subprocess
 import threading
 import os
 from pathlib import Path
@@ -455,15 +455,15 @@ class CropGUI:
         return True
         
     def check_dependencies(self):
-        """Check if ImageMagick convert is available."""
+        """Check if Pillow is available."""
         try:
-            subprocess.run(['convert', '-version'], capture_output=True, check=True)
+            from PIL import Image
             return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except ImportError:
             messagebox.showerror(
                 "Missing Dependencies", 
-                "ImageMagick 'convert' command is not available.\n\n"
-                "Please install ImageMagick using:\nsudo apt-get install imagemagick"
+                "Pillow (PIL) is not available.\n\n"
+                "Please install Pillow using:\npip install Pillow"
             )
             return False
             
@@ -501,8 +501,6 @@ class CropGUI:
             height = int(self.crop_height_var.get())
             output_folder = Path(self.output_folder_var.get())
             
-            crop_spec = f"{width}x{height}+{x}+{y}"
-            
             for i, image_path in enumerate(self.image_files):
                 if not self.is_processing:
                     break
@@ -514,12 +512,25 @@ class CropGUI:
                     input_path = Path(image_path)
                     output_path = output_folder / input_path.name
                     
-                    # Use ImageMagick convert to crop the image
-                    subprocess.run([
-                        'convert', str(input_path), '-crop', crop_spec, str(output_path)
-                    ], check=True, capture_output=True)
+                    # Use Pillow to crop the image
+                    with Image.open(input_path) as img:
+                        # Define crop box (left, top, right, bottom)
+                        crop_box = (x, y, x + width, y + height)
+                        
+                        # Ensure crop box is within image bounds
+                        img_width, img_height = img.size
+                        crop_box = (
+                            max(0, min(crop_box[0], img_width)),
+                            max(0, min(crop_box[1], img_height)),
+                            max(0, min(crop_box[2], img_width)),
+                            max(0, min(crop_box[3], img_height))
+                        )
+                        
+                        # Crop and save the image
+                        cropped_img = img.crop(crop_box)
+                        cropped_img.save(output_path)
                     
-                except subprocess.CalledProcessError as e:
+                except Exception as e:
                     self.root.after(0, messagebox.showerror, "Processing Error", 
                                    f"Error processing {input_path.name}: {e}")
                     break
@@ -574,11 +585,11 @@ class CropGUI:
     def show_dependency_status(self):
         """Show the status of required dependencies."""
         try:
-            result = subprocess.run(['convert', '-version'], capture_output=True, text=True, check=True)
-            version_info = result.stdout.split('\n')[0]
-            messagebox.showinfo("Dependencies", f"ImageMagick is installed:\n{version_info}")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            messagebox.showerror("Dependencies", "ImageMagick 'convert' command is not available.")
+            from PIL import Image
+            import PIL
+            messagebox.showinfo("Dependencies", f"Pillow is installed:\nVersion {PIL.__version__}")
+        except ImportError:
+            messagebox.showerror("Dependencies", "Pillow (PIL) is not available.")
             
     def show_about(self):
         """Show about dialog."""
@@ -588,10 +599,11 @@ class CropGUI:
             "A GUI interface for batch image cropping.\n"
             "Based on crop.sh script functionality.\n\n"
             "Features:\n"
-            "• Batch image processing\n"
+            "• Batch image processing with Pillow\n"
             "• Interactive crop selection\n"
             "• Image preview with navigation\n"
-            "• Mouse-based crop area selection"
+            "• Mouse-based crop area selection\n"
+            "• No external dependencies required"
         )
         
     def show_usage_tips(self):

@@ -11,7 +11,7 @@ This project provides a complete pipeline with intuitive GUI applications for:
 2. **Cropping** images to focus on content with interactive preview
 3. **OCR Processing** to extract and clean text using AI-powered correction
 4. **Rendering** the final EPUB file with proper formatting and metadata
-5. **Audio Generation** (optional) using text-to-speech
+5. **Audio Generation** (optional) using text-to-speech or full M4B audiobook creation
 
 ## Features
 
@@ -124,13 +124,25 @@ This produces an EPUB file with proper chapters, formatting, and metadata based 
 
 ### 5. Generate Audio (Optional)
 
-If you want an audio version of your book:
+You have two options for creating audio versions:
 
+#### Option A: Simple TTS (Original)
 ```bash
 bash tts.sh
 ```
+This generates individual WAV audio files using Kokoro TTS from the extracted text files.
 
-This generates audio files using the Kokoro TTS engine from the extracted text files.
+#### Option B: Complete Audiobook (New)
+```bash
+./epub_to_m4b.sh your_book.epub [output_name]
+```
+This creates a professional M4B audiobook with:
+- Proper metadata (title, author, genre)
+- Chapter markers for easy navigation
+- Combined audio in a single file
+- Optimized for audiobook players
+
+See [EPUB_TO_M4B.md](EPUB_TO_M4B.md) for detailed documentation.
 
 ## Customization
 

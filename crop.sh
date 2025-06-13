@@ -8,6 +8,7 @@ y=190
 
 mkdir -p out
 for f in images/*.png; do
-  convert $f -crop ${w}x${h}+${x}+${y} out/$f
+  outf="$(echo "$f" | sed 's/\.png\|images\///g')"
+  convert "$f" -crop ${w}x${h}+${x}+${y} "out/${outf}.png"
 done  
 

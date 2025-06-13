@@ -76,7 +76,7 @@ def generate_epub_from_json(json_file):
             if current_chapter_content:
                 if division_counter > 1:
                     chapter = epub.EpubHtml(
-                        title=f"{current_chapter_title} - {chapter_counter}.{division_counter}",
+                        title=f"{current_chapter_title} - {division_counter}",
                         file_name=f'chapter_{chapter_counter}.xhtml'
                     )
                 else:
@@ -146,7 +146,7 @@ def generate_epub_from_json(json_file):
                 if current_chapter_content:
                     if division_counter > 1:
                         chapter = epub.EpubHtml(
-                            title=f"{current_chapter_title} - {chapter_counter}.{division_counter}",
+                            title=f"{current_chapter_title} - {division_counter}",
                             file_name=f'chapter_{chapter_counter}.{division_counter}.xhtml'
                         )
                     else:
@@ -165,7 +165,7 @@ def generate_epub_from_json(json_file):
     if current_chapter_content:
         if division_counter > 1:
             chapter = epub.EpubHtml(
-                title=f"{current_chapter_title} - {chapter_counter}.{division_counter}",
+                title=f"{current_chapter_title} - {division_counter}",
                 file_name=f'chapter_{chapter_counter}.xhtml'
             )
         else:

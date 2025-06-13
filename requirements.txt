@@ -1,0 +1,3 @@
+EbookLib==0.19
+kokoro==0.9.4
+python-dotenv==1.1.0

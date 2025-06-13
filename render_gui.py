@@ -360,9 +360,18 @@ class RenderGUI:
                         stubs_added.append("author")
                         
                     if not has_cover:
+                        # Determine cover image path based on current JSON file location
+                        if self.current_json_file:
+                            # Use the same name as JSON file but with .png extension
+                            json_path = Path(self.current_json_file)
+                            cover_image = json_path.stem + ".png"
+                        else:
+                            # Default fallback if no file is loaded
+                            cover_image = "cover.png"
+                            
                         new_data.append({
                             "type": "cover",
-                            "image": "cover.png"
+                            "image": cover_image
                         })
                         stubs_added.append("cover")
                     
@@ -860,7 +869,12 @@ Content elements:
 Images should be relative paths from the JSON file location.
 
 Auto-Stub Feature:
-When you validate JSON and required sections are missing, the application will offer to automatically insert stub entries with placeholder content. This helps ensure your JSON has all necessary elements for EPUB generation.
+When you validate JSON and required sections are missing, the application will offer to automatically insert stub entries with placeholder content:
+• title: "Your Book Title Here"
+• author: "Your Name Here"
+• cover: Uses same filename as JSON file with .png extension (e.g., "my_book.json" → "my_book.png")
+
+This helps ensure your JSON has all necessary elements for EPUB generation.
 """
         
         help_window = tk.Toplevel(self.root)

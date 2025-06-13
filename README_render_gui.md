@@ -122,7 +122,12 @@ python render_gui.py
 ### Auto-Stub Feature
 When validating JSON, if required sections (title, author, cover) are missing:
 - The application will prompt you to automatically add stub entries
-- Stubs are inserted at the beginning of the JSON with placeholder content
+- Stubs are inserted at the beginning of the JSON with placeholder content:
+  - **title**: "Your Book Title Here"
+  - **author**: "Your Name Here"  
+  - **cover**: Automatically uses the same filename as your JSON file but with .png extension
+    - Example: If your JSON file is "my_book.json", the cover will be "my_book.png"
+    - Falls back to "cover.png" if no JSON file is currently loaded
 - You can then edit the placeholder text with your actual information
 - This ensures your JSON always has the minimum required structure for EPUB generation
 

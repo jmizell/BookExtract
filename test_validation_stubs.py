@@ -16,7 +16,7 @@ def test_validation_logic():
         {"type": "paragraph", "content": "Some content"}
     ]
     
-    print("\nTest 1: Missing all required sections")
+    print("\nTest 1: Missing all required sections (no file loaded)")
     print("Original JSON:", json.dumps(test_json_1, indent=2))
     
     # Simulate validation logic
@@ -144,6 +144,68 @@ def test_validation_logic():
         print(f"Missing sections: {missing_sections}")
     else:
         print("✓ All required sections present - no stubs needed")
+    
+    # Test case 4: Missing cover with file-based naming
+    test_json_4 = [
+        {"type": "title", "content": "My Book"},
+        {"type": "author", "content": "John Doe"},
+        {"type": "paragraph", "content": "Some content"}
+    ]
+    
+    print("\n" + "="*50)
+    print("Test 4: Missing cover with file-based naming")
+    print("Original JSON:", json.dumps(test_json_4, indent=2))
+    
+    # Simulate having a loaded file
+    current_json_file = "sample_data/my_book.json"
+    print(f"Simulated current file: {current_json_file}")
+    
+    # Simulate validation logic
+    has_title = any(item.get('type') == 'title' for item in test_json_4)
+    has_author = any(item.get('type') == 'author' for item in test_json_4)
+    has_cover = any(item.get('type') == 'cover' for item in test_json_4)
+    
+    missing_sections = []
+    if not has_title:
+        missing_sections.append("title")
+    if not has_author:
+        missing_sections.append("author")
+    if not has_cover:
+        missing_sections.append("cover")
+    
+    print(f"Missing sections: {missing_sections}")
+    
+    # Simulate stub insertion with file-based cover naming
+    if missing_sections:
+        new_data = []
+        
+        if not has_title:
+            new_data.append({
+                "type": "title",
+                "content": "Your Book Title Here"
+            })
+            
+        if not has_author:
+            new_data.append({
+                "type": "author", 
+                "content": "Your Name Here"
+            })
+            
+        if not has_cover:
+            # Simulate the logic from GUI - file loaded case
+            from pathlib import Path
+            json_path = Path(current_json_file)
+            cover_image = json_path.stem + ".png"
+            new_data.append({
+                "type": "cover",
+                "image": cover_image
+            })
+        
+        # Add existing data
+        new_data.extend(test_json_4)
+        
+        print("JSON with file-based cover stub added:")
+        print(json.dumps(new_data, indent=2))
 
 def main():
     """Run validation tests."""

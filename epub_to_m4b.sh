@@ -85,11 +85,25 @@ extract_epub() {
     
     print_status "Extracting text from EPUB: $(basename "$epub_file")"
     
-    python3 "$SCRIPT_DIR/epub_extractor.py" "$epub_file" -o "$TEMP_DIR"
+    python3 "$SCRIPT_DIR/epub_extractor.py" "$epub_file" -o "$TEMP_DIR" --intermediate
     
     if [ ! -f "$TEMP_DIR/book_info.json" ]; then
         print_error "Failed to extract EPUB content"
         exit 1
+    fi
+    
+    # Check if intermediate format was generated and use it for better processing
+    if [ -f "$TEMP_DIR/book_intermediate.json" ]; then
+        print_status "Using intermediate representation format for enhanced processing"
+        
+        # Use the intermediate format to regenerate optimized text files
+        python3 "$SCRIPT_DIR/intermediate_to_m4b.py" "$TEMP_DIR/book_intermediate.json" -o "$TEMP_DIR"
+        
+        if [ $? -ne 0 ]; then
+            print_warning "Failed to process intermediate format, falling back to legacy format"
+        else
+            print_status "Enhanced text files generated from intermediate format"
+        fi
     fi
     
     print_success "EPUB extraction completed"

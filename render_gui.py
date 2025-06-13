@@ -18,6 +18,7 @@ import uuid
 from ebooklib import epub
 import zipfile
 import html
+from book_intermediate import BookIntermediate, BookConverter
 
 
 class RenderGUI:
@@ -51,9 +52,11 @@ class RenderGUI:
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New", command=self.new_json, accelerator="Ctrl+N")
         file_menu.add_command(label="Open JSON...", command=self.open_json, accelerator="Ctrl+O")
+        file_menu.add_command(label="Open Intermediate...", command=self.open_intermediate)
         file_menu.add_separator()
         file_menu.add_command(label="Save JSON", command=self.save_json, accelerator="Ctrl+S")
         file_menu.add_command(label="Save JSON As...", command=self.save_json_as, accelerator="Ctrl+Shift+S")
+        file_menu.add_command(label="Save Intermediate As...", command=self.save_intermediate_as)
         file_menu.add_separator()
         file_menu.add_command(label="Export EPUB...", command=self.export_epub, accelerator="Ctrl+E")
         file_menu.add_separator()
@@ -293,6 +296,76 @@ class RenderGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save JSON file:\n{str(e)}")
             self.log_message(f"Error saving JSON file: {str(e)}", "ERROR")
+    
+    def open_intermediate(self):
+        """Open an intermediate representation file."""
+        if self.check_unsaved_changes():
+            return
+            
+        file_path = filedialog.askopenfilename(
+            title="Open Intermediate File",
+            initialdir=self.default_input_folder,
+            filetypes=[("Intermediate files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                # Load intermediate representation
+                intermediate = BookIntermediate.load_from_file(file_path)
+                
+                # Convert to section array format for editing
+                sections = BookConverter.to_section_array(intermediate)
+                
+                self.json_editor.delete(1.0, tk.END)
+                self.json_editor.insert(1.0, json.dumps(sections, indent=2))
+                self.current_json_file = file_path
+                self.current_json_data = sections
+                self.log_message(f"Opened intermediate file: {file_path}")
+                self.log_message(f"Loaded {intermediate.get_chapter_count()} chapters, {intermediate.get_total_word_count()} words")
+                self.refresh_preview()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open intermediate file:\n{str(e)}")
+                self.log_message(f"Error opening intermediate file: {str(e)}", "ERROR")
+    
+    def save_intermediate_as(self):
+        """Save the current JSON as an intermediate representation file."""
+        try:
+            # Validate JSON first
+            json_text = self.json_editor.get(1.0, tk.END).strip()
+            if not json_text:
+                messagebox.showwarning("Warning", "No JSON content to save")
+                return
+                
+            sections = json.loads(json_text)
+            
+            # Convert to intermediate representation
+            intermediate = BookConverter.from_section_array(sections)
+            
+            # Get title for default filename
+            default_filename = f"{intermediate.metadata.title} - {intermediate.metadata.author}.intermediate.json"
+            
+            # Ask for save location
+            file_path = filedialog.asksaveasfilename(
+                title="Save Intermediate File",
+                initialdir=self.default_output_folder,
+                initialfile=default_filename,
+                defaultextension=".json",
+                filetypes=[("Intermediate files", "*.json"), ("All files", "*.*")]
+            )
+            
+            if file_path:
+                intermediate.save_to_file(file_path)
+                self.log_message(f"Saved intermediate representation to: {file_path}")
+                self.log_message(f"Saved {intermediate.get_chapter_count()} chapters, {intermediate.get_total_word_count()} words")
+                messagebox.showinfo("Success", f"Intermediate representation saved to:\n{file_path}")
+                
+        except json.JSONDecodeError as e:
+            messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
+            self.log_message(f"Save intermediate error - JSON parsing: {str(e)}", "ERROR")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save intermediate file:\n{str(e)}")
+            self.log_message(f"Save intermediate error: {str(e)}", "ERROR")
             
     def format_json(self):
         """Format the JSON in the editor."""

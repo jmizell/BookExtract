@@ -434,9 +434,11 @@ class RenderGUI:
             self.root.after(0, self._update_preview_area, preview_text)
             
         except json.JSONDecodeError as e:
-            self.root.after(0, lambda: self.log_message(f"JSON parsing error: {str(e)}", "ERROR"))
+            error_msg = f"JSON parsing error: {str(e)}"
+            self.root.after(0, lambda msg=error_msg: self.log_message(msg, "ERROR"))
         except Exception as e:
-            self.root.after(0, lambda: self.log_message(f"Preview generation error: {str(e)}", "ERROR"))
+            error_msg = f"Preview generation error: {str(e)}"
+            self.root.after(0, lambda msg=error_msg: self.log_message(msg, "ERROR"))
         finally:
             self.is_rendering = False
             

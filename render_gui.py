@@ -522,7 +522,7 @@ class RenderGUI:
             file_path = filedialog.asksaveasfilename(
                 title="Export EPUB",
                 initialdir=self.default_output_folder,
-                initialvalue=default_filename,
+                initialfile=default_filename,
                 defaultextension=".epub",
                 filetypes=[("EPUB files", "*.epub"), ("All files", "*.*")]
             )

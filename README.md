@@ -27,9 +27,10 @@ This project provides a complete pipeline for:
 1. Clone this repository
 2. Install required dependencies:
    ```
-   sudo apt-get install imagemagick tesseract-ocr xdotool
+   sudo apt-get install imagemagick tesseract-ocr xdotool python3-tk
    pip install ebooklib python-dotenv requests
    ```
+   Note: `python3-tk` is needed for the GUI interface
 3. Create a `.env` file with the following variables:
    ```
    API_URL=https://api.openai.com/v1/chat/completions
@@ -43,16 +44,32 @@ The digitization process follows these steps in sequence:
 
 ### 1. Capture Pages
 
-Open your book in a viewer application and run:
+Open your book in a viewer application and choose one of the capture methods:
 
+**Option A: GUI Interface (Recommended)**
+```bash
+python3 capture_gui.py
+# or
+bash launch_capture_gui.sh
+```
+
+**Option B: Command Line**
 ```bash
 bash capture.sh
 ```
 
-This script:
-- Takes screenshots of each page
-- Automatically navigates to the next page
-- Saves images to the `images/` directory
+The GUI version provides:
+- User-friendly interface with configurable settings
+- Real-time progress tracking and status updates
+- Coordinate testing to ensure proper navigation
+- Input validation and error handling
+
+Both methods:
+- Take screenshots of each page
+- Automatically navigate to the next page
+- Save images to the `images/` directory
+
+See `README_GUI.md` for detailed GUI usage instructions.
 
 ### 2. Crop Images
 

@@ -310,7 +310,7 @@ class RenderGUI:
             self.log_message(f"JSON formatting error: {str(e)}", "ERROR")
             
     def validate_json(self):
-        """Validate the JSON in the editor."""
+        """Validate the JSON in the editor and insert stubs for missing required sections."""
         try:
             json_text = self.json_editor.get(1.0, tk.END).strip()
             data = json.loads(json_text)
@@ -320,20 +320,79 @@ class RenderGUI:
             has_author = any(item.get('type') == 'author' for item in data)
             has_cover = any(item.get('type') == 'cover' for item in data)
             
-            issues = []
+            missing_sections = []
+            stubs_added = []
+            
+            # Check for missing sections and prepare stubs
             if not has_title:
-                issues.append("Missing 'title' entry")
+                missing_sections.append("title")
             if not has_author:
-                issues.append("Missing 'author' entry")
+                missing_sections.append("author")
             if not has_cover:
-                issues.append("Missing 'cover' entry")
+                missing_sections.append("cover")
                 
-            if issues:
-                messagebox.showwarning("Validation Issues", "JSON validation issues:\n" + "\n".join(issues))
-                self.log_message(f"JSON validation issues: {', '.join(issues)}", "WARNING")
+            if missing_sections:
+                # Ask user if they want to add stubs
+                response = messagebox.askyesno(
+                    "Missing Required Sections",
+                    f"The following required sections are missing:\n" + 
+                    "\n".join(f"• {section}" for section in missing_sections) +
+                    "\n\nWould you like to automatically add stub entries for these sections?"
+                )
+                
+                if response:
+                    # Create a new data list with stubs inserted at the beginning
+                    new_data = []
+                    
+                    # Add missing stubs at the beginning
+                    if not has_title:
+                        new_data.append({
+                            "type": "title",
+                            "content": "Your Book Title Here"
+                        })
+                        stubs_added.append("title")
+                        
+                    if not has_author:
+                        new_data.append({
+                            "type": "author", 
+                            "content": "Your Name Here"
+                        })
+                        stubs_added.append("author")
+                        
+                    if not has_cover:
+                        new_data.append({
+                            "type": "cover",
+                            "image": "cover.png"
+                        })
+                        stubs_added.append("cover")
+                    
+                    # Add existing data
+                    new_data.extend(data)
+                    
+                    # Update the editor with the new JSON
+                    formatted_json = json.dumps(new_data, indent=2, ensure_ascii=False)
+                    self.json_editor.delete(1.0, tk.END)
+                    self.json_editor.insert(1.0, formatted_json)
+                    
+                    # Log the changes
+                    self.log_message(f"Added stub entries for: {', '.join(stubs_added)}")
+                    messagebox.showinfo(
+                        "Stubs Added", 
+                        f"Added stub entries for: {', '.join(stubs_added)}\n\n" +
+                        "Please update the placeholder content with your actual information."
+                    )
+                else:
+                    # User declined to add stubs
+                    self.log_message(f"JSON validation issues: {', '.join(missing_sections)}", "WARNING")
+                    messagebox.showwarning(
+                        "Validation Issues", 
+                        "JSON validation issues:\n" + 
+                        "\n".join(f"• Missing '{section}' entry" for section in missing_sections)
+                    )
             else:
-                messagebox.showinfo("Validation", "JSON is valid!")
-                self.log_message("JSON validation successful")
+                # All required sections present
+                messagebox.showinfo("Validation", "JSON is valid! All required sections are present.")
+                self.log_message("JSON validation successful - all required sections present")
                 
         except json.JSONDecodeError as e:
             messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
@@ -797,6 +856,9 @@ Content elements:
 • {"type": "page_division"} - Creates a page break
 
 Images should be relative paths from the JSON file location.
+
+Auto-Stub Feature:
+When you validate JSON and required sections are missing, the application will offer to automatically insert stub entries with placeholder content. This helps ensure your JSON has all necessary elements for EPUB generation.
 """
         
         help_window = tk.Toplevel(self.root)

@@ -81,6 +81,7 @@ The GUI supports all the same JSON elements as the original render.py:
 ### 1. Real-time Validation
 - JSON syntax checking
 - Required field validation
+- Automatic stub insertion for missing required sections
 - Immediate feedback on errors
 
 ### 2. Live Preview
@@ -114,9 +115,16 @@ python render_gui.py
 ### Basic Workflow
 1. **Load or Create JSON**: Use File → Open or start with New
 2. **Edit Content**: Modify JSON in the left editor panel
-3. **Validate**: Use Edit → Validate JSON to check syntax
+3. **Validate**: Use Edit → Validate JSON to check syntax and auto-add missing stubs
 4. **Preview**: Click Refresh in the right panel to see EPUB preview
 5. **Export**: Use File → Export EPUB to save the final book
+
+### Auto-Stub Feature
+When validating JSON, if required sections (title, author, cover) are missing:
+- The application will prompt you to automatically add stub entries
+- Stubs are inserted at the beginning of the JSON with placeholder content
+- You can then edit the placeholder text with your actual information
+- This ensures your JSON always has the minimum required structure for EPUB generation
 
 ### Sample JSON Structure
 The application includes a default sample JSON that demonstrates all supported elements:

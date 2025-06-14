@@ -13,12 +13,10 @@ import threading
 import time
 import os
 import json
-import base64
-import requests
 from pathlib import Path
 from dotenv import load_dotenv
-import concurrent.futures
 import glob
+from ocr_processor import OCRProcessor
 
 
 class OCRGUI:
@@ -41,6 +39,13 @@ class OCRGUI:
         
         # Load environment variables
         load_dotenv()
+        
+        # Initialize OCR processor
+        self.ocr_processor = OCRProcessor()
+        self.ocr_processor.set_callbacks(
+            progress_callback=self.update_progress_from_processor,
+            log_callback=self.log_message_from_processor
+        )
         
         self.setup_ui()
         
@@ -279,6 +284,14 @@ class OCRGUI:
         self.status_text.see(tk.END)
         self.root.update_idletasks()
         
+    def log_message_from_processor(self, message):
+        """Callback method for OCR processor to log messages."""
+        self.root.after(0, self.log_message, message)
+        
+    def update_progress_from_processor(self, current, status):
+        """Callback method for OCR processor to update progress."""
+        self.root.after(0, self.update_progress, current, status)
+        
     def validate_inputs(self):
         """Validate user inputs before starting processing."""
         input_folder = Path(self.input_folder_var.get())
@@ -353,34 +366,18 @@ class OCRGUI:
             
         self.log_message("Testing API connection...")
         
-        try:
-            # Simple test request
-            test_payload = {
-                "model": self.model_var.get(),
-                "messages": [{"role": "user", "content": [{"type": "text", "text": "Hello"}]}],
-                "max_tokens": 10
-            }
-            
-            response = requests.post(
-                self.api_url_var.get(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_token_var.get()}"
-                },
-                json=test_payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                self.log_message("API connection successful!")
-                messagebox.showinfo("Success", "API connection test successful!")
-            else:
-                self.log_message(f"API connection failed: {response.status_code}")
-                messagebox.showerror("API Error", f"API connection failed: {response.status_code}\n{response.text}")
-                
-        except Exception as e:
-            self.log_message(f"API connection error: {e}")
-            messagebox.showerror("Connection Error", f"Failed to connect to API: {e}")
+        # Update processor with current settings
+        self.ocr_processor.api_url = self.api_url_var.get()
+        self.ocr_processor.api_token = self.api_token_var.get()
+        self.ocr_processor.model = self.model_var.get()
+        
+        success, message = self.ocr_processor.test_api_connection()
+        
+        self.log_message(message)
+        if success:
+            messagebox.showinfo("Success", "API connection test successful!")
+        else:
+            messagebox.showerror("API Error", message)
             
     def start_processing(self):
         """Start the OCR processing."""
@@ -431,10 +428,17 @@ class OCRGUI:
             input_folder = Path(self.input_folder_var.get())
             output_folder = Path(self.output_folder_var.get())
             
+            # Update processor with current settings
+            self.ocr_processor.api_url = self.api_url_var.get()
+            self.ocr_processor.api_token = self.api_token_var.get()
+            self.ocr_processor.model = self.model_var.get()
+            self.ocr_processor.max_workers = int(self.max_workers_var.get())
+            self.ocr_processor.is_cancelled = False
+            
             # Step 1: Basic OCR with tesseract
             self.root.after(0, self.update_progress, 0, "Running basic OCR...")
             
-            if not self.run_basic_ocr(input_folder, output_folder):
+            if not self.ocr_processor.run_basic_ocr(input_folder, output_folder, self.total_files):
                 self.root.after(0, self.processing_failed, "Basic OCR failed")
                 return
                 
@@ -443,7 +447,7 @@ class OCRGUI:
                 progress_offset = self.total_files // 3 if self.include_merge_var.get() else self.total_files // 2
                 self.root.after(0, self.update_progress, progress_offset, "Running LLM cleanup...")
                 
-                if not self.run_llm_cleanup(output_folder):
+                if not self.ocr_processor.run_llm_cleanup(output_folder, self.total_files):
                     self.root.after(0, self.processing_failed, "LLM cleanup failed")
                     return
                     
@@ -452,7 +456,7 @@ class OCRGUI:
                     progress_offset = (self.total_files * 2) // 3
                     self.root.after(0, self.update_progress, progress_offset, "Merging content across pages...")
                     
-                    if not self.run_merge_step(output_folder):
+                    if not self.ocr_processor.run_merge_step(output_folder):
                         self.root.after(0, self.processing_failed, "Merge step failed")
                         return
                     
@@ -462,451 +466,6 @@ class OCRGUI:
         except Exception as e:
             self.root.after(0, self.processing_failed, f"Unexpected error: {e}")
             
-    def run_basic_ocr(self, input_folder, output_folder):
-        """Run basic OCR using tesseract."""
-        try:
-            # Find all image files
-            image_extensions = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tiff']
-            image_files = []
-            for ext in image_extensions:
-                image_files.extend(glob.glob(str(input_folder / ext)))
-                image_files.extend(glob.glob(str(input_folder / ext.upper())))
-            
-            image_files.sort()
-            
-            for i, image_path in enumerate(image_files):
-                if not self.is_processing:
-                    return False
-                    
-                image_file = Path(image_path)
-                output_name = image_file.stem
-                txt_output = output_folder / f"{output_name}.txt"
-                
-                # Skip if already processed
-                if txt_output.exists():
-                    self.root.after(0, self.log_message, f"Skipping {image_file.name} (already processed)")
-                    continue
-                    
-                self.root.after(0, self.log_message, f"Processing {image_file.name} with tesseract...")
-                
-                try:
-                    # Run tesseract
-                    result = subprocess.run([
-                        'tesseract', str(image_path), str(output_folder / output_name)
-                    ], capture_output=True, text=True, check=True)
-                    
-                    # Post-process the text file (same as ocr.sh)
-                    if txt_output.exists():
-                        with open(txt_output, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                        
-                        # Apply the same sed transformations as in ocr.sh
-                        # Replace double newlines with null, single newlines with space, null back to double newlines
-                        content = content.replace('\n\n', '\x00')
-                        content = content.replace('\n', ' ')
-                        content = content.replace('\x00', '\n\n')
-                        
-                        with open(txt_output, 'w', encoding='utf-8') as f:
-                            f.write(content)
-                            
-                        self.root.after(0, self.log_message, f"Wrote {txt_output}")
-                        
-                except subprocess.CalledProcessError as e:
-                    self.root.after(0, self.log_message, f"Error processing {image_file.name}: {e}")
-                    continue
-                    
-                # Update progress
-                self.processed_files += 1
-                progress_value = self.processed_files if self.processing_mode_var.get() == "basic" else self.processed_files // 2
-                self.root.after(0, self.update_progress, progress_value, f"Basic OCR: {self.processed_files}/{self.total_files}")
-                
-            return True
-            
-        except Exception as e:
-            self.root.after(0, self.log_message, f"Basic OCR error: {e}")
-            return False
-            
-    def run_llm_cleanup(self, output_folder):
-        """Run LLM cleanup on OCR results."""
-        try:
-            # Find all text files
-            text_files = list(output_folder.glob("*.txt"))
-            text_files.sort()
-            
-            if not text_files:
-                self.root.after(0, self.log_message, "No text files found for LLM cleanup")
-                return True
-                
-            # Process files concurrently
-            max_workers = int(self.max_workers_var.get())
-            
-            if max_workers == 1:
-                # Sequential processing for debugging
-                completed = 0
-                for txt_file in text_files:
-                    if not self.is_processing:
-                        return False
-                    
-                    try:
-                        result = self.process_single_file(txt_file)
-                        if result:
-                            completed += 1
-                            progress_value = (self.total_files // 2) + (completed * (self.total_files // 2) // len(text_files))
-                            self.root.after(0, self.update_progress, progress_value, f"LLM cleanup: {completed}/{len(text_files)}")
-                            self.root.after(0, self.log_message, f"Completed LLM processing for {txt_file.name}")
-                        else:
-                            self.root.after(0, self.log_message, f"Failed LLM processing for {txt_file.name}")
-                    except Exception as e:
-                        self.root.after(0, self.log_message, f"Processing exception for {txt_file.name}: {e}")
-            else:
-                # Concurrent processing
-                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    # Submit all tasks
-                    futures = {executor.submit(self.process_single_file, txt_file): txt_file for txt_file in text_files}
-                    
-                    # Process results as they complete
-                    completed = 0
-                    for future in concurrent.futures.as_completed(futures):
-                        if not self.is_processing:
-                            return False
-                            
-                        txt_file = futures[future]
-                        try:
-                            result = future.result()
-                            if result:
-                                completed += 1
-                                progress_value = (self.total_files // 2) + (completed * (self.total_files // 2) // len(text_files))
-                                self.root.after(0, self.update_progress, progress_value, f"LLM cleanup: {completed}/{len(text_files)}")
-                                self.root.after(0, self.log_message, f"Completed LLM processing for {txt_file.name}")
-                            else:
-                                self.root.after(0, self.log_message, f"Failed LLM processing for {txt_file.name}")
-                        except Exception as e:
-                            self.root.after(0, self.log_message, f"Worker exception for {txt_file.name}: {e}")
-                        
-            return True
-            
-        except Exception as e:
-            self.root.after(0, self.log_message, f"LLM cleanup error: {e}")
-            return False
-            
-    def run_merge_step(self, output_folder):
-        """Run merge step to fix content split across pages."""
-        try:
-            # Find all JSON files
-            json_files = list(output_folder.glob("*.json"))
-            json_files.sort()
-            
-            if not json_files:
-                self.root.after(0, self.log_message, "No JSON files found for merge step")
-                return True
-                
-            self.root.after(0, self.log_message, f"Starting merge step with {len(json_files)} files...")
-            
-            sections = []
-            
-            for i, json_file in enumerate(json_files):
-                if not self.is_processing:
-                    return False
-                    
-                try:
-                    with open(json_file, 'r', encoding='utf-8') as f:
-                        section = json.load(f)
-                        
-                    if len(section) == 0:
-                        self.root.after(0, self.log_message, f"No sections in {json_file.name}, skipping")
-                        continue
-                        
-                    if len(sections) == 0:
-                        sections = section
-                        continue
-                        
-                    # Check if merge is likely needed before calling LLM
-                    last_section_content = sections[-1]["content"]
-                    first_new_section_content = section[0]["content"]
-                    
-                    # If last section ends with punctuation and new section starts with capital letter,
-                    # assume no merge needed
-                    ends_with_punctuation = last_section_content and last_section_content[-1] in ['.', '!', '?', ':', ';']
-                    starts_with_capital = first_new_section_content and first_new_section_content[0].isupper()
-                    
-                    if ends_with_punctuation and starts_with_capital:
-                        self.root.after(0, self.log_message, f"No merge likely needed for {json_file.name}")
-                        sections = sections + section
-                        continue
-                        
-                    # Call LLM to determine if merge is needed
-                    self.root.after(0, self.log_message, f"Checking merge for {json_file.name}...")
-                    
-                    merge_prompt = """These are two segments of text from an OCR task. The first segment is from the end of one page. The last segment is
-from the beginning of the following page. Sometimes during OCR content is split between one page, and the next. We
-need to identify when this happens, and join the content is necessary.
-
-Examples:
-
-## Example Of Split Content That Needs To Be Joined
-First and second page segments
-[
-{"type":"paragraph","content":"Books are comprised of words on a page"},
-{"type":"paragraph","content":"that make up long sentences of text."},
-]
-
-To join these sections, output this
-action("merge")
-
-## Example Of Segments that Should Not Be Joined
-First and second page segments
-[
-{"type":"paragraph","content":"Books are comprised of words on a page that make up long sentences of text."},
-{"type":"paragraph","content":"In this second paragraph, I shall refute the statement from the first."},
-]
-
-To leave as is, output this
-action("noop")
-"""
-                    
-                    payload = {
-                        "model": self.model_var.get(),
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": merge_prompt + "\n\n# SEGMENTS FROM FIRST AND NEXT PAGE\n\n" + json.dumps([sections[-1], section[0]])
-                                    }
-                                ]
-                            }
-                        ],
-                        "max_tokens": 20000,
-                        "response_format": {
-                            "type": "json_object"
-                        }
-                    }
-                    
-                    response = requests.post(
-                        self.api_url_var.get(),
-                        headers={
-                            "Content-Type": "application/json",
-                            "Authorization": f"Bearer {self.api_token_var.get()}"
-                        },
-                        json=payload,
-                        timeout=60
-                    )
-                    
-                    if response.status_code == 200:
-                        response_data = response.json()
-                        msg_content = response_data['choices'][0]['message']['content']
-                        
-                        if 'action("merge")' in msg_content:
-                            self.root.after(0, self.log_message, f"Merging sections from {json_file.name}")
-                            sections[-1]["content"] = sections[-1]["content"] + " " + section[0]["content"]
-                            section = section[1:]
-                        else:
-                            self.root.after(0, self.log_message, f"No merge needed for {json_file.name}")
-                            
-                        sections = sections + section
-                        
-                    else:
-                        self.root.after(0, self.log_message, f"API error for {json_file.name}: {response.status_code}")
-                        sections = sections + section  # Continue without merge
-                        
-                except Exception as e:
-                    self.root.after(0, self.log_message, f"Error processing {json_file.name}: {e}")
-                    continue
-                    
-            # Save the merged result
-            book_json_path = output_folder / "book.json"
-            with open(book_json_path, 'w', encoding='utf-8') as f:
-                json.dump(sections, f, indent=2, ensure_ascii=False)
-                
-            self.root.after(0, self.log_message, f"Merge completed! Saved {len(sections)} sections to book.json")
-            return True
-            
-        except Exception as e:
-            self.root.after(0, self.log_message, f"Merge step error: {e}")
-            return False
-            
-    def process_single_file(self, txt_file):
-        """Process a single text file with LLM cleanup."""
-        try:
-            # Check if corresponding image and JSON files exist
-            img_file = txt_file.with_suffix('.png')
-            json_file = txt_file.with_suffix('.json')
-            
-            # Debug logging
-            self.root.after(0, self.log_message, f"Processing {txt_file.name} -> {json_file.name}")
-            
-            if not img_file.exists():
-                # Try other image extensions
-                for ext in ['.jpg', '.jpeg', '.bmp', '.tiff']:
-                    alt_img = txt_file.with_suffix(ext)
-                    if alt_img.exists():
-                        img_file = alt_img
-                        break
-                else:
-                    self.root.after(0, self.log_message, f"No image file found for {txt_file.name}")
-                    return False
-                    
-            if json_file.exists():
-                self.root.after(0, self.log_message, f"Skipping {txt_file.name} - already processed")
-                return True  # Already processed
-                
-            # Read the image and text files
-            with open(img_file, "rb") as f:
-                encoded_image = base64.b64encode(f.read()).decode("utf-8")
-                
-            with open(txt_file, "r", encoding='utf-8') as f:
-                text_content = f.read()
-                
-            # Prepare API request
-            ocr_prompt = """These images are segments of a book we are converting into structured json. Ensure that all content from 
-the page is included, such as headers, subtexts, graphics (with alt text if possible), tables, and any other 
-elements. You will be provided the output of the first pass of running OCR on these pages.
-
-Requirements:
-  - Output Only JSON: Return solely the JSON content without any additional explanations or comments.
-  - No Delimiters: Do not use code fences or delimiters like ```markdown.
-  - Complete Content: If present, do not omit any part of the page, including headers, block quotes, and subtext.
-  - Accurate Content: Do not include parts that don't exist. If there is no header, footers, etc., do not include them.
-  - Correct any OCR mistakes, including spelling, incorrect line breaks, or invalid characters.
-
-Style Guide
-  - Output as an array of objects. In the format of {"type":"section_type","content":"section content"}
-  - Types should be title, author, header, sub_header, chapter_header, paragraph, page_division, bold, block_indent.
-  - Ensure that your json strings are properly escaped and encoded.
-
-Example:
-[
-{"type":"author","content":"A. Writer"},
-{"type":"title","content":"The Great Book Title"},
-{"type":"sub_header","content":"A guide to writing great book title"},
-{"type":"chapter_header","content":"1"},
-{"type":"paragraph","content":"Books are comprised of words on a page."},
-{"type":"block_indent","content":"'This is a famous quote' - Some Guy"},
-{"type":"paragraph","content":"Some additional \"words\" go in a paragraph."}
-]
-"""
-            
-            payload = {
-                "model": self.model_var.get(),
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": ocr_prompt + "\n\n# OCR CONTENT\n\n" + text_content
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{encoded_image}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                "max_tokens": 20000,
-                "response_format": {
-                    "type": "json_object"
-                }
-            }
-            
-            response = requests.post(
-                self.api_url_var.get(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_token_var.get()}"
-                },
-                json=payload,
-                timeout=120
-            )
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                msg_content = response_data['choices'][0]['message']['content']
-                
-                try:
-                    parsed = json.loads(msg_content)
-                    if isinstance(parsed, dict) and 'content' in parsed:
-                        parsed = parsed['content']
-                    if not isinstance(parsed, list):
-                        parsed = [parsed]
-                        
-                    # Add source information
-                    for item in parsed:
-                        if isinstance(item, dict):
-                            item["source"] = txt_file.name
-                            
-                    # Save JSON output
-                    with open(json_file, "w", encoding='utf-8') as f:
-                        json.dump(parsed, f, indent=2, ensure_ascii=False)
-                    
-                    self.root.after(0, self.log_message, f"Saved {len(parsed)} sections to {json_file.name}")
-                    return True
-                    
-                except json.JSONDecodeError as e:
-                    # Try to handle the failure
-                    return self.handle_json_failure(payload, msg_content, str(e), json_file, txt_file.name)
-                    
-            else:
-                return False
-                
-        except Exception as e:
-            return False
-            
-    def handle_json_failure(self, payload, failed_json, exception_message, json_file, source_name):
-        """Handle JSON parsing failures by retrying with error context."""
-        try:
-            payload["messages"].append({
-                "role": "assistant",
-                "content": [{"type": "text", "text": failed_json}]
-            })
-            payload["messages"].append({
-                "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": f"There was an error parsing your json, {exception_message}. Ensure that you've properly escaped your json strings."
-                }]
-            })
-            
-            response = requests.post(
-                self.api_url_var.get(),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_token_var.get()}"
-                },
-                json=payload,
-                timeout=120
-            )
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                msg_content = response_data['choices'][0]['message']['content']
-                
-                parsed = json.loads(msg_content)
-                if isinstance(parsed, dict) and 'content' in parsed:
-                    parsed = parsed['content']
-                if not isinstance(parsed, list):
-                    parsed = [parsed]
-                    
-                # Add source information
-                for item in parsed:
-                    if isinstance(item, dict):
-                        item["source"] = source_name
-                        
-                # Save JSON output
-                with open(json_file, "w", encoding='utf-8') as f:
-                    json.dump(parsed, f, indent=2, ensure_ascii=False)
-                
-                self.root.after(0, self.log_message, f"Retry saved {len(parsed)} sections to {json_file.name}")
-                return True
-                
-        except Exception:
-            pass
-            
-        return False
-        
     def update_progress(self, current, status):
         """Update progress bar and status."""
         self.progress_bar.config(value=current)
@@ -947,6 +506,7 @@ Example:
     def cancel_processing(self):
         """Cancel the current processing."""
         self.is_processing = False
+        self.ocr_processor.cancel()
         self.start_button.config(state=tk.NORMAL)
         self.cancel_button.config(state=tk.DISABLED)
         self.progress_var.set("Processing cancelled")

@@ -127,77 +127,131 @@ class RenderBookGUI:
         )
         
         # Configure syntax highlighting
-        from pygments.lexers import JsonLexer
-        from pygments.style import Style
-        from pygments.token import Token
-        from pygments import highlight
-        from pygments.formatters import get_formatter_by_name
-        
-        class JsonEditorStyle(Style):
-            styles = {
-                Token.String:  '#FF0000',
-                Token.Number:  '#008800',
-                Token.Keyword: '#0000FF',
-                Token.Name:    '#000000',
-            }
-        
         self.json_lexer = JsonLexer()
-        self.json_editor.tag_config('Token.String', foreground='#FF0000')
-        self.json_editor.tag_config('Token.Number', foreground='#008800')
-        self.json_editor.tag_config('Token.Keyword', foreground='#0000FF')
-        self.json_editor.tag_config('Token.Name', foreground='#000000')
+        
+        # Configure text tags for different token types
+        self.json_editor.tag_config('Token.Literal.String.Double', foreground='#d73a49')  # Red for strings
+        self.json_editor.tag_config('Token.Literal.Number.Integer', foreground='#005cc5')  # Blue for numbers
+        self.json_editor.tag_config('Token.Literal.Number.Float', foreground='#005cc5')    # Blue for numbers
+        self.json_editor.tag_config('Token.Keyword.Constant', foreground='#d73a49')        # Red for true/false/null
+        self.json_editor.tag_config('Token.Punctuation', foreground='#24292e')             # Dark gray for punctuation
+        self.json_editor.tag_config('Token.Name.Tag', foreground='#22863a')                # Green for property names
         
         def highlight_json(event=None):
-            code = self.json_editor.get(1.0, tk.END)
-            self.json_editor.mark_set(tk.INSERT, 1.0)
-            self.json_editor.mark_set(tk.END, tk.END)
-            self.json_editor.tag_remove('Token.String', 1.0, tk.END)
-            self.json_editor.tag_remove('Token.Number', 1.0, tk.END)
-            self.json_editor.tag_remove('Token.Keyword', 1.0, tk.END)
-            self.json_editor.tag_remove('Token.Name', 1.0, tk.END)
+            """Apply syntax highlighting to JSON content."""
+            # Get current cursor position to restore it later
+            cursor_pos = self.json_editor.index(tk.INSERT)
+            
+            # Get the content
+            content = self.json_editor.get(1.0, tk.END)
+            
+            # Remove all existing tags
+            for tag in ['Token.Literal.String.Double', 'Token.Literal.Number.Integer', 
+                       'Token.Literal.Number.Float', 'Token.Keyword.Constant', 
+                       'Token.Punctuation', 'Token.Name.Tag']:
+                self.json_editor.tag_remove(tag, 1.0, tk.END)
             
             try:
-                for token, text in self.json_lexer.get_tokens(code):
-                    start = self.json_editor.index(tk.INSERT)
-                    self.json_editor.insert(tk.END, text)
-                    end = self.json_editor.index(tk.INSERT)
-                    self.json_editor.tag_add(str(token), start, end)
+                # Tokenize the content
+                tokens = list(self.json_lexer.get_tokens(content))
+                
+                # Apply highlighting
+                line_num = 1
+                col_num = 0
+                
+                for token_type, text in tokens:
+                    if text:
+                        # Calculate start and end positions
+                        start_pos = f"{line_num}.{col_num}"
+                        
+                        # Update position based on text content
+                        lines = text.split('\n')
+                        if len(lines) > 1:
+                            line_num += len(lines) - 1
+                            col_num = len(lines[-1])
+                        else:
+                            col_num += len(text)
+                        
+                        end_pos = f"{line_num}.{col_num}"
+                        
+                        # Apply appropriate tag based on token type
+                        token_str = str(token_type)
+                        if token_str in ['Token.Literal.String.Double', 'Token.Literal.Number.Integer',
+                                       'Token.Literal.Number.Float', 'Token.Keyword.Constant',
+                                       'Token.Punctuation', 'Token.Name.Tag']:
+                            self.json_editor.tag_add(token_str, start_pos, end_pos)
+                        elif 'String' in token_str:
+                            self.json_editor.tag_add('Token.Literal.String.Double', start_pos, end_pos)
+                        elif 'Number' in token_str:
+                            self.json_editor.tag_add('Token.Literal.Number.Integer', start_pos, end_pos)
+                        elif token_str in ['Token.Keyword', 'Token.Literal.String.Symbol']:
+                            self.json_editor.tag_add('Token.Keyword.Constant', start_pos, end_pos)
+                            
+            except Exception as e:
+                # Silently ignore highlighting errors to avoid disrupting editing
+                pass
+            
+            # Restore cursor position
+            try:
+                self.json_editor.mark_set(tk.INSERT, cursor_pos)
             except:
                 pass
         
-        self.json_editor.bind('&lt;KeyRelease&gt;', highlight_json)
+        # Store the highlighting function for later use
+        self.highlight_json = highlight_json
+        
+        # Bind to key release events for real-time highlighting
+        self.json_editor.bind('<KeyRelease>', highlight_json)
         
         # Configure tab completion
-        self.completions = ['"type"', '"content"', '"image"', '"author"', '"title"', '"chapter_header"', '"paragraph"']
+        self.completions = [
+            '"type"', '"content"', '"image"', '"author"', '"title"', 
+            '"chapter_header"', '"paragraph"', '"cover"', '"page_break"',
+            '"true"', '"false"', '"null"'
+        ]
         self.completion_start = None
         
         def on_tab(event):
-            # Get current position and line
-            pos = self.json_editor.index(tk.INSERT)
-            line = self.json_editor.get('insert linestart', 'insert lineend')
-            
-            # Find word start
-            i = int(pos.split('.')[1]) - 1
-            while i >= 0 and (line[i].isalpha() or line[i] == '"'):
-                i -= 1
-            word_start = i + 1
-            
-            # Get partial word
-            partial = line[word_start:int(pos.split('.')[1])]
-            
-            # Find matching completions
-            matches = [c for c in self.completions if c.startswith(partial)]
-            
-            if matches:
-                # Insert first match
-                completion = matches[0][len(partial):]
-                self.json_editor.insert(tk.INSERT, completion)
-                if len(matches) > 1:
-                    self.log_message(f"Other completions: {', '.join(matches[1:])}")
-            
-            return "break"  # prevent default tab behavior
+            """Handle tab completion for JSON keywords."""
+            try:
+                # Get current position and line
+                pos = self.json_editor.index(tk.INSERT)
+                line = self.json_editor.get('insert linestart', 'insert lineend')
+                
+                # Find word start
+                col = int(pos.split('.')[1])
+                i = col - 1
+                while i >= 0 and (line[i].isalnum() or line[i] in '"_'):
+                    i -= 1
+                word_start = i + 1
+                
+                # Get partial word
+                partial = line[word_start:col]
+                
+                # Find matching completions
+                matches = [c for c in self.completions if c.startswith(partial)]
+                
+                if matches:
+                    # Insert first match
+                    completion = matches[0][len(partial):]
+                    self.json_editor.insert(tk.INSERT, completion)
+                    
+                    # Show other matches in log if there are multiple
+                    if len(matches) > 1:
+                        self.log_message(f"Tab completion: {matches[0]} (other options: {', '.join(matches[1:])})")
+                    else:
+                        self.log_message(f"Tab completion: {matches[0]}")
+                else:
+                    # No matches, insert regular tab
+                    self.json_editor.insert(tk.INSERT, "  ")  # 2 spaces instead of tab
+                
+                return "break"  # prevent default tab behavior
+            except Exception as e:
+                # If anything goes wrong, just insert spaces
+                self.json_editor.insert(tk.INSERT, "  ")
+                return "break"
         
-        self.json_editor.bind('&lt;Tab&gt;', on_tab)
+        self.json_editor.bind('<Tab>', on_tab)
         self.json_editor.grid(row=1, column=0, sticky="nsew")
         
         # Right panel - Rich Text Preview
@@ -310,6 +364,9 @@ class RenderBookGUI:
         self.current_json_file = None
         self.current_json_data = default_json
         self.log_message("Created new JSON document")
+        # Apply initial syntax highlighting
+        if hasattr(self, 'highlight_json'):
+            self.highlight_json()
         self.refresh_preview()
         
     def open_json(self):
@@ -333,6 +390,9 @@ class RenderBookGUI:
                 self.current_json_file = file_path
                 self.current_json_data = data
                 self.log_message(f"Opened JSON file: {file_path}")
+                # Apply initial syntax highlighting
+                if hasattr(self, 'highlight_json'):
+                    self.highlight_json()
                 self.refresh_preview()
                 
             except Exception as e:
@@ -459,6 +519,9 @@ class RenderBookGUI:
             self.json_editor.delete(1.0, tk.END)
             self.json_editor.insert(1.0, formatted_json)
             self.log_message("JSON formatted successfully")
+            # Apply syntax highlighting after formatting
+            if hasattr(self, 'highlight_json'):
+                self.highlight_json()
             
         except json.JSONDecodeError as e:
             messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
@@ -630,6 +693,9 @@ class RenderBookGUI:
                 self.current_json_file = default_path
                 self.current_json_data = data
                 self.log_message(f"Loaded default JSON: {default_path}")
+                # Apply initial syntax highlighting
+                if hasattr(self, 'highlight_json'):
+                    self.highlight_json()
                 self.refresh_preview()
                 
             except Exception as e:

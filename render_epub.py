@@ -18,7 +18,7 @@ import uuid
 from ebooklib import epub
 import zipfile
 import html
-from bookextract import BookIntermediate, BookConverter, EpubGenerator
+from bookextract import BookIntermediate, BookConverter, EpubGenerator, RichTextRenderer
 
 
 class RenderEpubGUI:
@@ -41,6 +41,9 @@ class RenderEpubGUI:
         
         # Initialize EPUB generator with GUI logger
         self.epub_generator = EpubGenerator(logger=self.log_message)
+        
+        # Rich text renderer will be initialized after UI setup
+        self.rich_text_renderer = None
         
         self.setup_ui()
         self.load_default_intermediate()
@@ -153,14 +156,29 @@ class RenderEpubGUI:
         right_frame.columnconfigure(0, weight=1)
         right_frame.rowconfigure(1, weight=1)
         
-        # Preview area
-        self.preview_area = scrolledtext.ScrolledText(
+        # Preview area with rich text support
+        self.preview_area = tk.Text(
             right_frame,
             wrap=tk.WORD,
             font=("Georgia", 11),
-            state=tk.DISABLED
+            state=tk.DISABLED,
+            bg="white",
+            fg="black"
         )
         self.preview_area.grid(row=1, column=0, sticky="nsew")
+        
+        # Add scrollbar to preview area
+        preview_scrollbar = ttk.Scrollbar(right_frame, orient="vertical", command=self.preview_area.yview)
+        preview_scrollbar.grid(row=1, column=1, sticky="ns")
+        self.preview_area.configure(yscrollcommand=preview_scrollbar.set)
+        right_frame.columnconfigure(1, weight=0)
+        
+        # Initialize rich text renderer
+        self.rich_text_renderer = RichTextRenderer(
+            self.preview_area, 
+            self.default_input_folder, 
+            self.log_message
+        )
         
         # Bottom panel - Log console
         log_frame = ttk.LabelFrame(main_frame, text="Log Console", padding="5")
@@ -256,6 +274,10 @@ class RenderEpubGUI:
             
         if self.is_rendering:
             return
+        
+        # Clear image cache to free memory and reload images
+        if self.rich_text_renderer:
+            self.rich_text_renderer.clear_image_cache()
             
         self.is_rendering = True
         self.render_thread = threading.Thread(target=self._generate_preview)
@@ -263,30 +285,24 @@ class RenderEpubGUI:
         self.render_thread.start()
         
     def _generate_preview(self):
-        """Generate EPUB preview in a separate thread."""
+        """Generate rich text preview in a separate thread."""
         try:
-            self.log_message("Generating EPUB preview...")
+            self.log_message("Generating rich text preview...")
             
             if not self.current_intermediate_data:
                 self.log_message("No intermediate data to preview", "WARNING")
                 return
             
-            # Convert intermediate to section array for EPUB generation
-            sections = BookConverter.to_section_array(self.current_intermediate_data)
-            
-            # Create temporary EPUB
-            with tempfile.NamedTemporaryFile(suffix='.epub', delete=False) as temp_file:
-                self.temp_epub_path = temp_file.name
+            # Update base path for image resolution
+            if self.rich_text_renderer:
+                if self.current_intermediate_file:
+                    base_path = os.path.dirname(self.current_intermediate_file)
+                else:
+                    base_path = self.default_input_folder
+                self.rich_text_renderer.set_base_path(base_path)
                 
-            # Use the modular EPUB generator
-            base_path = os.path.dirname(self.current_intermediate_file) if self.current_intermediate_file else self.default_input_folder
-            self.epub_generator.generate_epub(sections, self.temp_epub_path, base_path)
-            
-            # Extract and display content
-            preview_text = self._extract_epub_preview(self.temp_epub_path)
-            
-            # Update preview area
-            self.root.after(0, self._update_preview_area, preview_text)
+                # Render using the shared renderer
+                self.root.after(0, self._render_preview, self.current_intermediate_data)
             
         except Exception as e:
             error_msg = f"Preview generation error: {str(e)}"
@@ -294,50 +310,14 @@ class RenderEpubGUI:
         finally:
             self.is_rendering = False
             
-    def _update_preview_area(self, text):
-        """Update the preview area with new text."""
-        self.preview_area.config(state=tk.NORMAL)
-        self.preview_area.delete(1.0, tk.END)
-        self.preview_area.insert(1.0, text)
-        self.preview_area.config(state=tk.DISABLED)
-        self.log_message("Preview updated successfully")
-        
-    def _extract_epub_preview(self, epub_path):
-        """Extract readable text from EPUB for preview."""
+    def _render_preview(self, intermediate_data):
+        """Render the preview using the RichTextRenderer."""
         try:
-            preview_text = ""
-            
-            with zipfile.ZipFile(epub_path, 'r') as epub_zip:
-                # Find content files
-                content_files = [f for f in epub_zip.namelist() if f.endswith('.xhtml') and 'chapter' in f]
-                content_files.sort()
-                
-                for content_file in content_files[:5]:  # Limit to first 5 chapters for preview
-                    try:
-                        content = epub_zip.read(content_file).decode('utf-8')
-                        # Simple HTML to text conversion
-                        text = self._html_to_text(content)
-                        preview_text += f"\n{'='*50}\n{text}\n"
-                    except Exception as e:
-                        preview_text += f"\n[Error reading {content_file}: {str(e)}]\n"
-                        
-            return preview_text if preview_text else "No readable content found in EPUB"
-            
+            if self.rich_text_renderer:
+                self.rich_text_renderer.render_intermediate_data(intermediate_data)
         except Exception as e:
-            return f"Error extracting EPUB preview: {str(e)}"
-            
-    def _html_to_text(self, html_content):
-        """Convert HTML content to plain text for preview."""
-        import re
-        
-        # Remove HTML tags
-        text = re.sub(r'<[^>]+>', '', html_content)
-        # Decode HTML entities
-        text = html.unescape(text)
-        # Clean up whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        return text
+            self.log_message(f"Rendering error: {str(e)}", "ERROR")
+
         
     def export_epub(self):
         """Export the current intermediate data as an EPUB file."""

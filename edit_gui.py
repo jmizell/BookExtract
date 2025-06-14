@@ -13,7 +13,7 @@ import os
 import threading
 from pathlib import Path
 from PIL import Image, ImageTk
-from bookextract import BookIntermediate, BookConverter
+from bookextract import BookIntermediate, BookConverter, RichTextRenderer
 
 
 class RenderBookGUI:
@@ -29,12 +29,12 @@ class RenderBookGUI:
         self.is_rendering = False
         self.render_thread = None
         
-        # Image cache to prevent memory leaks
-        self.image_cache = {}
-        
         # Default values
         self.default_input_folder = str(Path.cwd() / "out")
         self.default_output_folder = str(Path.cwd() / "out")
+        
+        # Rich text renderer will be initialized after UI setup
+        self.rich_text_renderer = None
         
         self.setup_ui()
         self.load_default_json()
@@ -155,8 +155,12 @@ class RenderBookGUI:
         self.preview_area.configure(yscrollcommand=preview_scrollbar.set)
         right_frame.columnconfigure(1, weight=0)
         
-        # Configure text tags for rich formatting
-        self.setup_text_tags()
+        # Initialize rich text renderer
+        self.rich_text_renderer = RichTextRenderer(
+            self.preview_area, 
+            self.default_input_folder, 
+            self.log_message
+        )
         
         # Bottom panel - Log console
         log_frame = ttk.LabelFrame(main_frame, text="Log Console", padding="5")
@@ -181,138 +185,6 @@ class RenderBookGUI:
         
         # Configure row weights for log section
         main_frame.rowconfigure(1, weight=0)
-        
-    def setup_text_tags(self):
-        """Configure text tags for rich formatting in the preview area."""
-        # Title formatting
-        self.preview_area.tag_configure("title", 
-                                      font=("Georgia", 24, "bold"), 
-                                      justify="center",
-                                      spacing1=20, spacing3=20)
-        
-        # Author formatting
-        self.preview_area.tag_configure("author", 
-                                      font=("Georgia", 16, "italic"), 
-                                      justify="center",
-                                      spacing3=30)
-        
-        # Chapter header formatting
-        self.preview_area.tag_configure("chapter_header", 
-                                      font=("Georgia", 20, "bold"), 
-                                      justify="center",
-                                      spacing1=30, spacing3=20)
-        
-        # Header formatting (h2)
-        self.preview_area.tag_configure("header", 
-                                      font=("Georgia", 16, "bold"), 
-                                      spacing1=15, spacing3=10)
-        
-        # Sub-header formatting (h3)
-        self.preview_area.tag_configure("sub_header", 
-                                      font=("Georgia", 14, "bold"), 
-                                      spacing1=10, spacing3=5)
-        
-        # Paragraph formatting
-        self.preview_area.tag_configure("paragraph", 
-                                      font=("Georgia", 11), 
-                                      spacing1=5, spacing3=5,
-                                      lmargin1=20, lmargin2=20)
-        
-        # Bold text formatting
-        self.preview_area.tag_configure("bold", 
-                                      font=("Georgia", 11, "bold"), 
-                                      spacing1=5, spacing3=5,
-                                      lmargin1=20, lmargin2=20)
-        
-        # Block indent formatting
-        self.preview_area.tag_configure("block_indent", 
-                                      font=("Georgia", 11, "italic"), 
-                                      spacing1=5, spacing3=5,
-                                      lmargin1=40, lmargin2=40,
-                                      rmargin=40)
-        
-        # Image placeholder formatting
-        self.preview_area.tag_configure("image", 
-                                      font=("Georgia", 10, "italic"), 
-                                      justify="center",
-                                      spacing1=10, spacing3=10,
-                                      background="#f0f0f0")
-        
-        # Image caption formatting
-        self.preview_area.tag_configure("image_caption", 
-                                      font=("Georgia", 9, "italic"), 
-                                      justify="center",
-                                      spacing3=15)
-        
-        # Cover formatting
-        self.preview_area.tag_configure("cover", 
-                                      font=("Georgia", 12, "bold"), 
-                                      justify="center",
-                                      spacing1=20, spacing3=20,
-                                      background="#e8e8e8")
-        
-        # Horizontal rule formatting
-        self.preview_area.tag_configure("hr", 
-                                      font=("Georgia", 8), 
-                                      justify="center",
-                                      spacing1=15, spacing3=15)
-        
-    def clear_image_cache(self):
-        """Clear the image cache to free memory."""
-        self.image_cache.clear()
-        
-    def load_and_resize_image(self, image_path, max_width=400, max_height=300, is_cover=False):
-        """Load and resize an image for display in the preview.
-        
-        Args:
-            image_path: Path to the image file
-            max_width: Maximum width for the resized image
-            max_height: Maximum height for the resized image
-            is_cover: If True, use larger dimensions for cover images
-            
-        Returns:
-            PhotoImage object or None if loading fails
-        """
-        try:
-            # Use larger dimensions for cover images
-            if is_cover:
-                max_width = 300
-                max_height = 400
-            
-            # Check cache first
-            cache_key = f"{image_path}_{max_width}_{max_height}_{is_cover}"
-            if cache_key in self.image_cache:
-                return self.image_cache[cache_key]
-            
-            # Load and process image
-            with Image.open(image_path) as img:
-                # Convert to RGB if necessary (handles RGBA, P mode, etc.)
-                if img.mode not in ('RGB', 'L'):
-                    img = img.convert('RGB')
-                
-                # Calculate resize dimensions maintaining aspect ratio
-                img_width, img_height = img.size
-                width_ratio = max_width / img_width
-                height_ratio = max_height / img_height
-                ratio = min(width_ratio, height_ratio)
-                
-                new_width = int(img_width * ratio)
-                new_height = int(img_height * ratio)
-                
-                # Resize image
-                img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
-                # Convert to PhotoImage
-                photo = ImageTk.PhotoImage(img_resized)
-                
-                # Cache the result
-                self.image_cache[cache_key] = photo
-                
-                return photo
-                
-        except Exception as e:
-            self.log_message(f"Failed to load image {image_path}: {str(e)}", "WARNING")
-            return None
     
     def log_message(self, message, level="INFO"):
         """Add a message to the log console."""
@@ -621,7 +493,8 @@ class RenderBookGUI:
             return
         
         # Clear image cache to free memory and reload images
-        self.clear_image_cache()
+        if self.rich_text_renderer:
+            self.rich_text_renderer.clear_image_cache()
             
         self.is_rendering = True
         self.render_thread = threading.Thread(target=self._generate_preview)
@@ -641,11 +514,16 @@ class RenderBookGUI:
                 
             data = json.loads(json_text)
             
-            # Generate rich text content
-            preview_content = self._generate_rich_text_content(data)
-            
-            # Update preview area
-            self.root.after(0, self._update_preview_area, preview_content)
+            # Update base path for image resolution
+            if self.rich_text_renderer:
+                if self.current_json_file:
+                    base_path = os.path.dirname(self.current_json_file)
+                else:
+                    base_path = self.default_input_folder
+                self.rich_text_renderer.set_base_path(base_path)
+                
+                # Render using the shared renderer
+                self.root.after(0, self._render_preview, data)
             
         except json.JSONDecodeError as e:
             error_msg = f"JSON parsing error: {str(e)}"
@@ -656,129 +534,14 @@ class RenderBookGUI:
         finally:
             self.is_rendering = False
             
-    def _generate_rich_text_content(self, book_data):
-        """Generate rich text content from JSON data."""
-        content_parts = []
-        
-        for item in book_data:
-            item_type = item.get('type', '')
-            content = item.get('content', '')
-            
-            if item_type == 'title':
-                content_parts.append(('title', content))
-                content_parts.append(('paragraph', ''))  # Add spacing
-                
-            elif item_type == 'author':
-                content_parts.append(('author', f"by {content}"))
-                content_parts.append(('paragraph', ''))  # Add spacing
-                
-            elif item_type == 'cover':
-                image_path = item.get('image', '')
-                if image_path:
-                    # Check if image exists
-                    if self.current_json_file:
-                        full_image_path = os.path.join(os.path.dirname(self.current_json_file), image_path)
-                    else:
-                        full_image_path = os.path.join(self.default_input_folder, image_path)
-                    
-                    if os.path.exists(full_image_path):
-                        # Try to load the actual image
-                        photo = self.load_and_resize_image(full_image_path, is_cover=True)
-                        if photo:
-                            content_parts.append(('cover_image', photo))
-                        else:
-                            content_parts.append(('cover', f"[COVER IMAGE: {image_path} - LOAD FAILED]"))
-                    else:
-                        content_parts.append(('cover', f"[COVER IMAGE: {image_path} - NOT FOUND]"))
-                else:
-                    content_parts.append(('cover', "[COVER IMAGE: No image specified]"))
-                content_parts.append(('paragraph', ''))  # Add spacing
-                
-            elif item_type == 'chapter_header':
-                content_parts.append(('paragraph', ''))  # Add spacing before chapter
-                content_parts.append(('chapter_header', f"Chapter {content}"))
-                content_parts.append(('paragraph', ''))  # Add spacing after chapter
-                
-            elif item_type == 'header':
-                content_parts.append(('header', content))
-                
-            elif item_type == 'sub_header':
-                content_parts.append(('sub_header', content))
-                
-            elif item_type == 'paragraph':
-                content_parts.append(('paragraph', content))
-                
-            elif item_type == 'bold':
-                content_parts.append(('bold', content))
-                
-            elif item_type == 'block_indent':
-                content_parts.append(('block_indent', content))
-                
-            elif item_type == 'image':
-                image_path = item.get('image', '')
-                caption = item.get('caption', '')
-                
-                if image_path:
-                    # Check if image exists
-                    if self.current_json_file:
-                        full_image_path = os.path.join(os.path.dirname(self.current_json_file), image_path)
-                    else:
-                        full_image_path = os.path.join(self.default_input_folder, image_path)
-                    
-                    if os.path.exists(full_image_path):
-                        # Try to load the actual image
-                        photo = self.load_and_resize_image(full_image_path, is_cover=False)
-                        if photo:
-                            content_parts.append(('content_image', photo))
-                        else:
-                            content_parts.append(('image', f"[IMAGE: {image_path} - LOAD FAILED]"))
-                    else:
-                        content_parts.append(('image', f"[IMAGE: {image_path} - NOT FOUND]"))
-                else:
-                    content_parts.append(('image', "[IMAGE: No image specified]"))
-                
-                if caption:
-                    content_parts.append(('image_caption', caption))
-                    
-            elif item_type == 'page_division':
-                content_parts.append(('hr', '─' * 50))
-                content_parts.append(('paragraph', ''))  # Add spacing
-                
-            else:
-                # Unknown type, render as paragraph
-                content_parts.append(('paragraph', f"[{item_type.upper()}]: {content}"))
-        
-        return content_parts
-            
-    def _update_preview_area(self, content_parts):
-        """Update the preview area with rich text content and images."""
-        self.preview_area.config(state=tk.NORMAL)
-        self.preview_area.delete(1.0, tk.END)
-        
-        for tag, content in content_parts:
-            if tag in ('cover_image', 'content_image'):
-                # Handle image content
-                if content:  # content is a PhotoImage object
-                    # Insert a newline before the image for spacing
-                    self.preview_area.insert(tk.INSERT, '\n')
-                    
-                    # Insert the image
-                    self.preview_area.image_create(tk.INSERT, image=content)
-                    
-                    # Insert a newline after the image
-                    self.preview_area.insert(tk.INSERT, '\n')
-            else:
-                # Handle text content
-                if content:  # Only insert non-empty text
-                    start_pos = self.preview_area.index(tk.INSERT)
-                    self.preview_area.insert(tk.INSERT, content + '\n')
-                    end_pos = self.preview_area.index(tk.INSERT)
-                    
-                    # Apply the tag to the inserted text
-                    self.preview_area.tag_add(tag, start_pos, end_pos)
-        
-        self.preview_area.config(state=tk.DISABLED)
-        self.log_message("Rich text preview updated successfully")
+    def _render_preview(self, data):
+        """Render the preview using the RichTextRenderer."""
+        try:
+            if self.rich_text_renderer:
+                self.rich_text_renderer.render_json_data(data)
+        except Exception as e:
+            self.log_message(f"Rendering error: {str(e)}", "ERROR")
+
         
     def load_default_json(self):
         """Load default JSON file if available."""

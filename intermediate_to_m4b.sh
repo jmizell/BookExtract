@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# EPUB to M4B Audiobook Converter
-# Converts EPUB files to M4B audiobooks with metadata and chapter markers
+# Intermediate to M4B Audiobook Converter
+# Converts book intermediate representation to M4B audiobooks with metadata and chapter markers
 # 
-# Usage: ./epub_to_m4b.sh <epub_file> [output_name]
+# Usage: ./intermediate_to_m4b.sh <intermediate_file> [output_name]
 #
 # Requirements:
-# - Python 3 with ebooklib, beautifulsoup4
+# - Python 3 with book_intermediate module
 # - Kokoro TTS (for audio generation)
 # - ffmpeg (for audio processing and M4B creation)
 
@@ -14,7 +14,7 @@ set -e  # Exit on any error
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMP_DIR="epub_temp_$$"
+TEMP_DIR="m4b_temp_$$"
 AUDIO_DIR="audio_temp_$$"
 TTS_MODEL="am_michael"  # Kokoro TTS model
 TTS_LANG="a"           # Kokoro language setting
@@ -59,8 +59,8 @@ check_dependencies() {
     print_status "Checking dependencies..."
     
     # Check Python and required modules
-    if ! python3 -c "import ebooklib, bs4" 2>/dev/null; then
-        print_error "Missing Python dependencies. Please install: pip install EbookLib beautifulsoup4"
+    if ! python3 -c "from book_intermediate import BookIntermediate, BookConverter" 2>/dev/null; then
+        print_error "Missing book_intermediate module. Please ensure book_intermediate.py is available."
         exit 1
     fi
     
@@ -79,34 +79,31 @@ check_dependencies() {
     print_success "All dependencies found"
 }
 
-# Function to extract text from EPUB
-extract_epub() {
-    local epub_file="$1"
+# Function to process intermediate format and create text files
+process_intermediate() {
+    local intermediate_file="$1"
     
-    print_status "Extracting text from EPUB: $(basename "$epub_file")"
+    print_status "Processing intermediate format: $(basename "$intermediate_file")"
     
-    python3 "$SCRIPT_DIR/epub_extractor.py" "$epub_file" -o "$TEMP_DIR" --intermediate
+    # Create temporary directory
+    mkdir -p "$TEMP_DIR"
+    
+    # Use intermediate_to_m4b.py to create text files and metadata
+    python3 "$SCRIPT_DIR/intermediate_to_m4b.py" "$intermediate_file" -o "$TEMP_DIR"
     
     if [ ! -f "$TEMP_DIR/book_info.json" ]; then
-        print_error "Failed to extract EPUB content"
+        print_error "Failed to process intermediate format"
         exit 1
     fi
     
-    # Check if intermediate format was generated and use it for better processing
-    if [ -f "$TEMP_DIR/book_intermediate.json" ]; then
-        print_status "Using intermediate representation format for enhanced processing"
-        
-        # Use the intermediate format to regenerate optimized text files
-        python3 "$SCRIPT_DIR/intermediate_to_m4b.py" "$TEMP_DIR/book_intermediate.json" -o "$TEMP_DIR"
-        
-        if [ $? -ne 0 ]; then
-            print_warning "Failed to process intermediate format, falling back to legacy format"
-        else
-            print_status "Enhanced text files generated from intermediate format"
-        fi
+    # Verify text files were created
+    local text_files=($(ls "$TEMP_DIR"/*.txt 2>/dev/null || true))
+    if [ ${#text_files[@]} -eq 0 ]; then
+        print_error "No text files were generated from intermediate format"
+        exit 1
     fi
     
-    print_success "EPUB extraction completed"
+    print_success "Intermediate format processing completed (${#text_files[@]} text files created)"
 }
 
 # Function to generate audio files using TTS
@@ -126,6 +123,12 @@ generate_audio() {
         local wav_file="$AUDIO_DIR/${basename}.wav"
         
         print_status "Processing ($current/$total_files): $basename"
+        
+        # Check if text file has content
+        if [ ! -s "$txt_file" ]; then
+            print_warning "Skipping empty text file: $basename"
+            continue
+        fi
         
         # Generate audio using Kokoro TTS
         if ! kokoro -m "$TTS_MODEL" -l "$TTS_LANG" -i "$txt_file" -o "$wav_file"; then
@@ -157,7 +160,7 @@ title=$(python3 -c "import json; data=json.load(open('$book_info_file')); print(
 artist=$(python3 -c "import json; data=json.load(open('$book_info_file')); print(data['metadata']['author'])")
 album=$(python3 -c "import json; data=json.load(open('$book_info_file')); print(data['metadata']['title'])")
 genre=Audiobook
-comment=Generated from EPUB using epub_to_m4b.sh
+comment=Generated from intermediate format using intermediate_to_m4b.sh
 
 EOF
 
@@ -234,7 +237,7 @@ create_m4b() {
            -metadata artist="$author" \
            -metadata album="$title" \
            -metadata genre="Audiobook" \
-           -metadata comment="Generated from EPUB using epub_to_m4b.sh" \
+           -metadata comment="Generated from intermediate format using intermediate_to_m4b.sh" \
            -y "$output_file"
     
     if [ ! -f "$output_file" ]; then
@@ -272,40 +275,103 @@ show_info() {
     echo "=========================="
 }
 
+# Function to validate intermediate file
+validate_intermediate_file() {
+    local intermediate_file="$1"
+    
+    print_status "Validating intermediate file..."
+    
+    # Check if file exists
+    if [ ! -f "$intermediate_file" ]; then
+        print_error "Intermediate file not found: $intermediate_file"
+        exit 1
+    fi
+    
+    # Check if it's valid JSON and has required structure
+    if ! python3 -c "
+import json
+import sys
+try:
+    with open('$intermediate_file', 'r') as f:
+        data = json.load(f)
+    
+    # Check for required fields
+    if 'metadata' not in data:
+        print('Missing metadata section')
+        sys.exit(1)
+    if 'chapters' not in data:
+        print('Missing chapters section')
+        sys.exit(1)
+    if 'title' not in data['metadata']:
+        print('Missing title in metadata')
+        sys.exit(1)
+    if 'author' not in data['metadata']:
+        print('Missing author in metadata')
+        sys.exit(1)
+    
+    print(f\"Valid intermediate file: {data['metadata']['title']} by {data['metadata']['author']}\")
+    print(f\"Chapters: {len(data['chapters'])}\")
+    
+except json.JSONDecodeError as e:
+    print(f'Invalid JSON: {e}')
+    sys.exit(1)
+except Exception as e:
+    print(f'Validation error: {e}')
+    sys.exit(1)
+"; then
+        print_error "Invalid intermediate file format"
+        exit 1
+    fi
+    
+    print_success "Intermediate file validation passed"
+}
+
 # Main function
 main() {
-    local epub_file="$1"
+    local intermediate_file="$1"
     local output_name="$2"
     
     # Validate input
-    if [ -z "$epub_file" ]; then
-        echo "Usage: $0 <epub_file> [output_name]"
+    if [ -z "$intermediate_file" ]; then
+        echo "Usage: $0 <intermediate_file> [output_name]"
         echo ""
-        echo "Convert EPUB to M4B audiobook with metadata and chapter markers"
+        echo "Convert book intermediate representation to M4B audiobook with metadata and chapter markers"
         echo ""
         echo "Arguments:"
-        echo "  epub_file    Path to the EPUB file to convert"
-        echo "  output_name  Optional output filename (without extension)"
+        echo "  intermediate_file  Path to the intermediate JSON file to convert"
+        echo "  output_name        Optional output filename (without extension)"
         echo ""
         echo "Example:"
-        echo "  $0 mybook.epub"
-        echo "  $0 mybook.epub \"My Custom Audiobook\""
+        echo "  $0 book_intermediate.json"
+        echo "  $0 book_intermediate.json \"My Custom Audiobook\""
+        echo ""
+        echo "The intermediate file should be in the format created by render_book.py"
+        echo "or converted using book_intermediate.py"
         exit 1
     fi
     
-    if [ ! -f "$epub_file" ]; then
-        print_error "EPUB file not found: $epub_file"
-        exit 1
-    fi
+    # Validate intermediate file
+    validate_intermediate_file "$intermediate_file"
     
     # Determine output filename
     if [ -z "$output_name" ]; then
-        output_name=$(basename "$epub_file" .epub)
+        # Extract title from intermediate file for default name
+        output_name=$(python3 -c "
+import json
+with open('$intermediate_file', 'r') as f:
+    data = json.load(f)
+title = data['metadata']['title']
+# Clean title for filename
+import re
+clean_title = re.sub(r'[^\w\s-]', '', title)
+clean_title = re.sub(r'[-\s]+', '_', clean_title)
+print(clean_title)
+")
     fi
     local m4b_file="${output_name}.m4b"
     
-    print_status "Starting EPUB to M4B conversion"
-    print_status "Input: $epub_file"
+    print_status "Starting intermediate to M4B conversion"
+    print_status "Input: $intermediate_file"
     print_status "Output: $m4b_file"
     echo ""
     
@@ -313,8 +379,8 @@ main() {
     check_dependencies
     echo ""
     
-    # Extract EPUB content
-    extract_epub "$epub_file"
+    # Process intermediate format
+    process_intermediate "$intermediate_file"
     echo ""
     
     # Generate audio files

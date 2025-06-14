@@ -18,6 +18,7 @@ from book_intermediate import BookIntermediate, BookConverter
 def create_text_files_from_intermediate(intermediate: BookIntermediate, output_dir: Path) -> None:
     """
     Create individual text files for each chapter from intermediate representation.
+    Optimized for TTS processing with proper formatting and content handling.
     
     Args:
         intermediate: BookIntermediate object
@@ -40,34 +41,104 @@ def create_text_files_from_intermediate(intermediate: BookIntermediate, output_d
         safe_title = safe_title.replace(' ', '_')
         filename = f"{chapter.number:02d}_{safe_title}.txt"
         
-        # Combine chapter content
-        content_parts = [chapter.title, ""]  # Title and blank line
+        # Combine chapter content with TTS-optimized formatting
+        content_parts = []
+        
+        # Add chapter title with proper spacing for TTS
+        content_parts.append(f"Chapter {chapter.number}: {chapter.title}")
+        content_parts.append("")  # Blank line after title
         
         for section in chapter.sections:
             if section.type == "chapter_header":
                 continue  # Skip as we already have the title
             elif section.type == "paragraph":
-                content_parts.append(section.content or "")
+                if section.content:
+                    # Clean up paragraph content for TTS
+                    cleaned_content = clean_text_for_tts(section.content)
+                    content_parts.append(cleaned_content)
             elif section.type in ["header", "sub_header"]:
-                content_parts.append(f"\n{section.content or ''}\n")
+                if section.content:
+                    # Headers get extra spacing and formatting for TTS
+                    cleaned_content = clean_text_for_tts(section.content)
+                    content_parts.append(f"\n{cleaned_content}\n")
             elif section.type == "bold":
-                content_parts.append(section.content or "")
+                if section.content:
+                    # Bold text is emphasized in TTS
+                    cleaned_content = clean_text_for_tts(section.content)
+                    content_parts.append(cleaned_content)
             elif section.type == "block_indent":
-                # Add some spacing for block quotes
-                content_parts.append(f"\n    {section.content or ''}\n")
+                if section.content:
+                    # Block quotes get special formatting
+                    cleaned_content = clean_text_for_tts(section.content)
+                    content_parts.append(f"\n{cleaned_content}\n")
             elif section.type == "page_division":
-                content_parts.append("\n---\n")
+                # Page breaks become pauses in TTS
+                content_parts.append("\n")
+            elif section.type == "image":
+                # Handle image descriptions for TTS
+                if section.caption:
+                    content_parts.append(f"[Image: {section.caption}]")
+                elif section.content:
+                    content_parts.append(f"[Image: {section.content}]")
             elif section.content:
-                content_parts.append(section.content)
+                # Any other content type
+                cleaned_content = clean_text_for_tts(section.content)
+                content_parts.append(cleaned_content)
         
-        # Write chapter file
+        # Write chapter file with proper spacing
         chapter_file = output_dir / filename
         chapter_content = "\n\n".join(filter(None, content_parts))
+        
+        # Ensure content is not empty
+        if not chapter_content.strip():
+            chapter_content = f"Chapter {chapter.number}: {chapter.title}\n\nThis chapter appears to be empty."
         
         with open(chapter_file, 'w', encoding='utf-8') as f:
             f.write(chapter_content)
         
-        print(f"Created chapter file: {chapter_file} ({len(chapter_content.split())} words)")
+        word_count = len(chapter_content.split())
+        print(f"Created chapter file: {chapter_file} ({word_count} words)")
+
+
+def clean_text_for_tts(text: str) -> str:
+    """
+    Clean and optimize text content for TTS processing.
+    
+    Args:
+        text: Raw text content
+        
+    Returns:
+        Cleaned text optimized for TTS
+    """
+    if not text:
+        return ""
+    
+    import re
+    
+    # Remove excessive whitespace
+    text = re.sub(r'\s+', ' ', text.strip())
+    
+    # Fix common punctuation issues for better TTS pronunciation
+    text = re.sub(r'\.{2,}', '...', text)  # Normalize ellipses
+    text = re.sub(r'--+', ' -- ', text)    # Normalize multiple dashes
+    # Don't normalize single dashes as they might be hyphens in words
+    
+    # Ensure proper sentence endings
+    text = re.sub(r'([.!?])\s*([A-Z])', r'\1 \2', text)
+    
+    # Remove or replace problematic characters for TTS
+    text = text.replace('"', '"').replace('"', '"')  # Smart quotes to regular quotes
+    text = text.replace(''', "'").replace(''', "'")  # Smart apostrophes
+    text = text.replace('…', '...')  # Ellipsis character to dots
+    
+    # Remove HTML tags if any
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Ensure text ends with proper punctuation for TTS
+    if text and not text[-1] in '.!?':
+        text += '.'
+    
+    return text
 
 
 def create_metadata_file(intermediate: BookIntermediate, output_dir: Path) -> None:

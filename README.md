@@ -125,7 +125,7 @@ This produces an EPUB file with proper chapters, formatting, and metadata based 
 
 ### 5. Generate Audio (Optional)
 
-You have two options for creating audio versions:
+You have multiple options for creating audio versions:
 
 #### Option A: Simple TTS (Original)
 ```bash
@@ -133,15 +133,24 @@ bash tts.sh
 ```
 This generates individual WAV audio files using Kokoro TTS from the extracted text files.
 
-#### Option B: Complete Audiobook (New)
+#### Option B: Complete Audiobook from Intermediate Format (Recommended)
 ```bash
-./epub_to_m4b.sh your_book.epub [output_name]
+./intermediate_to_m4b.sh book_intermediate.json [output_name]
 ```
-This creates a professional M4B audiobook with:
+This creates a professional M4B audiobook directly from the intermediate format with:
 - Proper metadata (title, author, genre)
 - Chapter markers for easy navigation
 - Combined audio in a single file
+- TTS-optimized text processing
 - Optimized for audiobook players
+
+See [INTERMEDIATE_TO_M4B.md](INTERMEDIATE_TO_M4B.md) for detailed documentation.
+
+#### Option C: Complete Audiobook from EPUB (Legacy)
+```bash
+./epub_to_m4b.sh your_book.epub [output_name]
+```
+This creates a professional M4B audiobook from EPUB files. This method is maintained for backward compatibility but the intermediate format approach (Option B) is recommended for new projects.
 
 See [EPUB_TO_M4B.md](EPUB_TO_M4B.md) for detailed documentation.
 
@@ -157,16 +166,23 @@ BookExtract now includes a unified intermediate representation that bridges the 
 
 ### Key Files
 - `book_intermediate.py` - Core intermediate representation module
-- `intermediate_to_m4b.py` - M4B pipeline integration
+- `intermediate_to_m4b.py` - M4B text file preparation
+- `intermediate_to_m4b.sh` - Complete M4B audiobook generation
 - `INTERMEDIATE_FORMAT.md` - Complete format documentation
-- `INTERMEDIATE_SUMMARY.md` - Implementation overview
+- `INTERMEDIATE_TO_M4B.md` - M4B generation documentation
 
 ### Usage
 ```bash
+# Generate intermediate format from render_book.py
+python render_book.py  # Use GUI to save as intermediate format
+
 # Generate intermediate format from EPUB
 python epub_extractor.py book.epub --intermediate
 
-# Convert intermediate to M4B-ready files
+# Convert intermediate directly to M4B audiobook (Recommended)
+./intermediate_to_m4b.sh book_intermediate.json
+
+# Convert intermediate to M4B-ready text files only
 python intermediate_to_m4b.py book_intermediate.json -o m4b_ready/
 
 # Use in render GUI

@@ -16,6 +16,171 @@ from PIL import Image, ImageTk, ImageDraw
 import glob
 
 
+class ImageProcessor:
+    """Handles image loading, processing, and crop operations."""
+    
+    def __init__(self):
+        self.image_files = []
+        self.current_image_index = 0
+        self.current_image = None
+        
+        # Default crop coordinates
+        self.crop_x = 1056
+        self.crop_y = 190
+        self.crop_width = 822
+        self.crop_height = 947
+        
+    def load_images_from_folder(self, input_folder):
+        """Load images from the specified folder."""
+        input_path = Path(input_folder)
+        if not input_path.exists():
+            raise FileNotFoundError(f"Input folder does not exist: {input_path}")
+            
+        # Find all image files
+        image_extensions = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tiff', '*.gif']
+        self.image_files = []
+        
+        for ext in image_extensions:
+            self.image_files.extend(glob.glob(str(input_path / ext)))
+            self.image_files.extend(glob.glob(str(input_path / ext.upper())))
+            
+        if not self.image_files:
+            raise ValueError(f"No image files found in {input_path}")
+            
+        self.image_files.sort()
+        self.current_image_index = 0
+        return len(self.image_files)
+        
+    def get_current_image_info(self):
+        """Get information about the current image."""
+        if not self.image_files:
+            return None, "No images loaded"
+            
+        filename = Path(self.image_files[self.current_image_index]).name
+        info = f"{self.current_image_index + 1}/{len(self.image_files)}: {filename}"
+        return self.current_image_index, info
+        
+    def can_navigate_prev(self):
+        """Check if we can navigate to previous image."""
+        return self.current_image_index > 0
+        
+    def can_navigate_next(self):
+        """Check if we can navigate to next image."""
+        return self.current_image_index < len(self.image_files) - 1
+        
+    def navigate_prev(self):
+        """Navigate to previous image."""
+        if self.can_navigate_prev():
+            self.current_image_index -= 1
+            return True
+        return False
+        
+    def navigate_next(self):
+        """Navigate to next image."""
+        if self.can_navigate_next():
+            self.current_image_index += 1
+            return True
+        return False
+        
+    def load_current_image(self):
+        """Load the current image and return it along with display info."""
+        if not self.image_files:
+            return None, None, None
+            
+        try:
+            image_path = self.image_files[self.current_image_index]
+            self.current_image = Image.open(image_path)
+            
+            # Calculate display size (max 600x400 while maintaining aspect ratio)
+            max_width, max_height = 600, 400
+            img_width, img_height = self.current_image.size
+            
+            scale = min(max_width / img_width, max_height / img_height, 1.0)
+            display_width = int(img_width * scale)
+            display_height = int(img_height * scale)
+            
+            # Resize image for display
+            display_image = self.current_image.resize((display_width, display_height), Image.Resampling.LANCZOS)
+            
+            return self.current_image, display_image, scale
+            
+        except Exception as e:
+            raise Exception(f"Could not load image: {e}")
+            
+    def set_crop_coordinates(self, x, y, width, height):
+        """Set the crop coordinates."""
+        self.crop_x = x
+        self.crop_y = y
+        self.crop_width = width
+        self.crop_height = height
+        
+    def get_crop_coordinates(self):
+        """Get the current crop coordinates."""
+        return self.crop_x, self.crop_y, self.crop_width, self.crop_height
+        
+    def validate_crop_coordinates(self):
+        """Validate crop coordinates."""
+        if self.crop_x < 0 or self.crop_y < 0 or self.crop_width <= 0 or self.crop_height <= 0:
+            raise ValueError("Invalid crop dimensions")
+        return True
+        
+    def check_dependencies(self):
+        """Check if required dependencies are available."""
+        try:
+            from PIL import Image
+            return True
+        except ImportError:
+            return False
+            
+    def process_images(self, output_folder, progress_callback=None):
+        """Process all loaded images with the current crop settings."""
+        if not self.image_files:
+            raise ValueError("No images loaded")
+            
+        self.validate_crop_coordinates()
+        
+        output_path = Path(output_folder)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        processed_count = 0
+        
+        for i, image_path in enumerate(self.image_files):
+            if progress_callback:
+                should_continue = progress_callback(i, f"Processing {i+1}/{len(self.image_files)}")
+                if not should_continue:
+                    break
+                    
+            try:
+                input_path = Path(image_path)
+                output_file = output_path / input_path.name
+                
+                # Use Pillow to crop the image
+                with Image.open(input_path) as img:
+                    # Define crop box (left, top, right, bottom)
+                    crop_box = (self.crop_x, self.crop_y, 
+                               self.crop_x + self.crop_width, 
+                               self.crop_y + self.crop_height)
+                    
+                    # Ensure crop box is within image bounds
+                    img_width, img_height = img.size
+                    crop_box = (
+                        max(0, min(crop_box[0], img_width)),
+                        max(0, min(crop_box[1], img_height)),
+                        max(0, min(crop_box[2], img_width)),
+                        max(0, min(crop_box[3], img_height))
+                    )
+                    
+                    # Crop and save the image
+                    cropped_img = img.crop(crop_box)
+                    cropped_img.save(output_file)
+                    processed_count += 1
+                
+            except Exception as e:
+                raise Exception(f"Error processing {input_path.name}: {e}")
+                
+        return processed_count
+
+
 class CropGUI:
     def __init__(self, root):
         self.root = root
@@ -23,18 +188,19 @@ class CropGUI:
         self.root.geometry("900x700")
         self.root.resizable(True, True)
         
-        # State variables
+        # Initialize image processor
+        self.image_processor = ImageProcessor()
+        
+        # State variables for GUI
         self.is_processing = False
         self.process_thread = None
-        self.current_image = None
         self.preview_image = None
         self.crop_start_x = None
         self.crop_start_y = None
         self.crop_end_x = None
         self.crop_end_y = None
         self.crop_rect_id = None
-        self.image_files = []
-        self.current_image_index = 0
+        self.scale_factor = 1.0
         
         # Default values from crop.sh
         self.default_input_folder = str(Path.cwd() / "images")
@@ -239,98 +405,95 @@ class CropGUI:
             
     def load_images(self):
         """Load images from the input folder."""
-        input_folder = Path(self.input_folder_var.get())
-        if not input_folder.exists():
-            messagebox.showerror("Error", f"Input folder does not exist: {input_folder}")
-            return
+        try:
+            count = self.image_processor.load_images_from_folder(self.input_folder_var.get())
             
-        # Find all image files
-        image_extensions = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tiff', '*.gif']
-        self.image_files = []
-        
-        for ext in image_extensions:
-            self.image_files.extend(glob.glob(str(input_folder / ext)))
-            self.image_files.extend(glob.glob(str(input_folder / ext.upper())))
+            # Update navigation
+            self.update_navigation_buttons()
+            self.load_current_image()
             
-        if not self.image_files:
-            messagebox.showwarning("No Images", f"No image files found in {input_folder}")
-            return
+            messagebox.showinfo("Images Loaded", f"Loaded {count} images")
             
-        self.image_files.sort()
-        self.current_image_index = 0
-        
-        # Update navigation
-        self.update_navigation_buttons()
-        self.load_current_image()
-        
-        messagebox.showinfo("Images Loaded", f"Loaded {len(self.image_files)} images")
+        except FileNotFoundError as e:
+            messagebox.showerror("Error", str(e))
+        except ValueError as e:
+            messagebox.showwarning("No Images", str(e))
         
     def update_navigation_buttons(self):
         """Update the state of navigation buttons."""
-        if not self.image_files:
+        current_index, info = self.image_processor.get_current_image_info()
+        
+        if current_index is None:
             self.prev_button.config(state=tk.DISABLED)
             self.next_button.config(state=tk.DISABLED)
-            self.image_info_var.set("No images loaded")
+            self.image_info_var.set(info)
             return
             
-        self.prev_button.config(state=tk.NORMAL if self.current_image_index > 0 else tk.DISABLED)
-        self.next_button.config(state=tk.NORMAL if self.current_image_index < len(self.image_files) - 1 else tk.DISABLED)
-        
-        filename = Path(self.image_files[self.current_image_index]).name
-        self.image_info_var.set(f"{self.current_image_index + 1}/{len(self.image_files)}: {filename}")
+        self.prev_button.config(state=tk.NORMAL if self.image_processor.can_navigate_prev() else tk.DISABLED)
+        self.next_button.config(state=tk.NORMAL if self.image_processor.can_navigate_next() else tk.DISABLED)
+        self.image_info_var.set(info)
         
     def prev_image(self):
         """Navigate to previous image."""
-        if self.current_image_index > 0:
-            self.current_image_index -= 1
+        if self.image_processor.navigate_prev():
             self.update_navigation_buttons()
             self.load_current_image()
             
     def next_image(self):
         """Navigate to next image."""
-        if self.current_image_index < len(self.image_files) - 1:
-            self.current_image_index += 1
+        if self.image_processor.navigate_next():
             self.update_navigation_buttons()
             self.load_current_image()
             
     def load_current_image(self):
         """Load and display the current image."""
-        if not self.image_files:
-            return
-            
         try:
-            image_path = self.image_files[self.current_image_index]
-            self.current_image = Image.open(image_path)
+            current_image, display_image, scale = self.image_processor.load_current_image()
             
-            # Calculate display size (max 600x400 while maintaining aspect ratio)
-            max_width, max_height = 600, 400
-            img_width, img_height = self.current_image.size
-            
-            scale = min(max_width / img_width, max_height / img_height, 1.0)
-            display_width = int(img_width * scale)
-            display_height = int(img_height * scale)
-            
-            # Resize image for display
-            display_image = self.current_image.resize((display_width, display_height), Image.Resampling.LANCZOS)
+            if current_image is None:
+                return
+                
+            # Convert to PhotoImage for tkinter
             self.preview_image = ImageTk.PhotoImage(display_image)
             
             # Update canvas
             self.preview_canvas.delete("all")
+            display_width, display_height = display_image.size
             self.preview_canvas.config(scrollregion=(0, 0, display_width, display_height))
             self.preview_canvas.create_image(0, 0, anchor=tk.NW, image=self.preview_image)
             
             # Store scale factor for coordinate conversion
             self.scale_factor = scale
             
-            # Draw current crop area if coordinates are set
+            # Update crop coordinates from processor and draw preview
+            self.sync_crop_coordinates_from_processor()
             self.update_crop_preview()
             
         except Exception as e:
-            messagebox.showerror("Error", f"Could not load image: {e}")
+            messagebox.showerror("Error", str(e))
+            
+    def sync_crop_coordinates_from_processor(self):
+        """Sync crop coordinates from processor to GUI fields."""
+        x, y, width, height = self.image_processor.get_crop_coordinates()
+        self.crop_x_var.set(str(x))
+        self.crop_y_var.set(str(y))
+        self.crop_width_var.set(str(width))
+        self.crop_height_var.set(str(height))
+        
+    def sync_crop_coordinates_to_processor(self):
+        """Sync crop coordinates from GUI fields to processor."""
+        try:
+            x = int(self.crop_x_var.get())
+            y = int(self.crop_y_var.get())
+            width = int(self.crop_width_var.get())
+            height = int(self.crop_height_var.get())
+            self.image_processor.set_crop_coordinates(x, y, width, height)
+        except ValueError:
+            pass  # Invalid values, ignore
             
     def start_crop_selection(self, event):
         """Start crop area selection."""
-        if not self.current_image:
+        if self.image_processor.current_image is None:
             return
             
         # Convert canvas coordinates to image coordinates
@@ -346,7 +509,7 @@ class CropGUI:
             
     def update_crop_selection(self, event):
         """Update crop area selection."""
-        if not self.current_image or self.crop_start_x is None:
+        if self.image_processor.current_image is None or self.crop_start_x is None:
             return
             
         # Convert canvas coordinates to image coordinates
@@ -373,7 +536,7 @@ class CropGUI:
         
     def end_crop_selection(self, event):
         """End crop area selection and update coordinates."""
-        if not self.current_image or self.crop_start_x is None:
+        if self.image_processor.current_image is None or self.crop_start_x is None:
             return
             
         # Ensure we have valid coordinates
@@ -392,9 +555,12 @@ class CropGUI:
         self.crop_width_var.set(str(width))
         self.crop_height_var.set(str(height))
         
+        # Sync to processor
+        self.image_processor.set_crop_coordinates(x, y, width, height)
+        
     def update_crop_preview(self):
         """Update the crop preview based on current coordinates."""
-        if not self.current_image:
+        if self.image_processor.current_image is None:
             return
             
         try:
@@ -448,7 +614,7 @@ class CropGUI:
             messagebox.showerror("Invalid Input", "Please enter valid crop coordinates (non-negative integers)")
             return False
             
-        if not self.image_files:
+        if not self.image_processor.image_files:
             messagebox.showerror("No Images", "Please load images first")
             return False
             
@@ -456,16 +622,14 @@ class CropGUI:
         
     def check_dependencies(self):
         """Check if Pillow is available."""
-        try:
-            from PIL import Image
-            return True
-        except ImportError:
+        if not self.image_processor.check_dependencies():
             messagebox.showerror(
                 "Missing Dependencies", 
                 "Pillow (PIL) is not available.\n\n"
                 "Please install Pillow using:\npip install Pillow"
             )
             return False
+        return True
             
     def start_processing(self):
         """Start the image processing."""
@@ -485,8 +649,11 @@ class CropGUI:
         self.process_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
         
+        # Sync coordinates to processor
+        self.sync_crop_coordinates_to_processor()
+        
         # Setup progress bar
-        self.progress_bar.config(maximum=len(self.image_files), value=0)
+        self.progress_bar.config(maximum=len(self.image_processor.image_files), value=0)
         
         # Start processing in separate thread
         self.process_thread = threading.Thread(target=self.process_worker, daemon=True)
@@ -494,55 +661,25 @@ class CropGUI:
         
     def process_worker(self):
         """Worker thread for image processing."""
-        try:
-            x = int(self.crop_x_var.get())
-            y = int(self.crop_y_var.get())
-            width = int(self.crop_width_var.get())
-            height = int(self.crop_height_var.get())
-            output_folder = Path(self.output_folder_var.get())
+        def progress_callback(current, status):
+            """Callback for progress updates."""
+            if not self.is_processing:
+                return False  # Signal to stop processing
+            self.root.after(0, self.update_progress, current, status)
+            return True  # Continue processing
             
-            for i, image_path in enumerate(self.image_files):
-                if not self.is_processing:
-                    break
-                    
-                # Update progress
-                self.root.after(0, self.update_progress, i, f"Processing {i+1}/{len(self.image_files)}")
-                
-                try:
-                    input_path = Path(image_path)
-                    output_path = output_folder / input_path.name
-                    
-                    # Use Pillow to crop the image
-                    with Image.open(input_path) as img:
-                        # Define crop box (left, top, right, bottom)
-                        crop_box = (x, y, x + width, y + height)
-                        
-                        # Ensure crop box is within image bounds
-                        img_width, img_height = img.size
-                        crop_box = (
-                            max(0, min(crop_box[0], img_width)),
-                            max(0, min(crop_box[1], img_height)),
-                            max(0, min(crop_box[2], img_width)),
-                            max(0, min(crop_box[3], img_height))
-                        )
-                        
-                        # Crop and save the image
-                        cropped_img = img.crop(crop_box)
-                        cropped_img.save(output_path)
-                    
-                except Exception as e:
-                    self.root.after(0, messagebox.showerror, "Processing Error", 
-                                   f"Error processing {input_path.name}: {e}")
-                    break
-                    
-            # Processing completed or cancelled
+        try:
+            output_folder = self.output_folder_var.get()
+            processed_count = self.image_processor.process_images(output_folder, progress_callback)
+            
+            # Processing completed
             if self.is_processing:
-                self.root.after(0, self.processing_completed)
+                self.root.after(0, self.processing_completed, processed_count)
             else:
                 self.root.after(0, self.processing_cancelled)
                 
         except Exception as e:
-            self.root.after(0, messagebox.showerror, "Unexpected Error", f"Unexpected error: {e}")
+            self.root.after(0, messagebox.showerror, "Processing Error", str(e))
             self.root.after(0, self.processing_cancelled)
             
     def update_progress(self, current, status):
@@ -550,15 +687,15 @@ class CropGUI:
         self.progress_bar.config(value=current)
         self.progress_var.set(status)
         
-    def processing_completed(self):
+    def processing_completed(self, processed_count):
         """Handle successful completion of processing."""
         self.is_processing = False
         self.process_button.config(state=tk.NORMAL)
         self.cancel_button.config(state=tk.DISABLED)
-        self.progress_var.set(f"Completed! Processed {len(self.image_files)} images")
-        self.progress_bar.config(value=len(self.image_files))
+        self.progress_var.set(f"Completed! Processed {processed_count} images")
+        self.progress_bar.config(value=processed_count)
         messagebox.showinfo("Processing Complete", 
-                           f"Successfully processed {len(self.image_files)} images!\n"
+                           f"Successfully processed {processed_count} images!\n"
                            f"Output saved to: {self.output_folder_var.get()}")
         
     def processing_cancelled(self):
@@ -580,15 +717,20 @@ class CropGUI:
         self.crop_y_var.set("190")
         self.crop_width_var.set("822")
         self.crop_height_var.set("947")
+        
+        # Reset processor coordinates
+        self.image_processor.set_crop_coordinates(1056, 190, 822, 947)
         self.update_crop_preview()
         
     def show_dependency_status(self):
         """Show the status of required dependencies."""
-        try:
-            from PIL import Image
-            import PIL
-            messagebox.showinfo("Dependencies", f"Pillow is installed:\nVersion {PIL.__version__}")
-        except ImportError:
+        if self.image_processor.check_dependencies():
+            try:
+                import PIL
+                messagebox.showinfo("Dependencies", f"Pillow is installed:\nVersion {PIL.__version__}")
+            except ImportError:
+                messagebox.showinfo("Dependencies", "Pillow is available")
+        else:
             messagebox.showerror("Dependencies", "Pillow (PIL) is not available.")
             
     def show_about(self):
@@ -627,9 +769,13 @@ def main():
     root = tk.Tk()
     app = CropGUI(root)
     
-    # Bind coordinate field changes to update preview
+    # Bind coordinate field changes to update preview and sync to processor
+    def on_coordinate_change(*args):
+        app.sync_crop_coordinates_to_processor()
+        app.update_crop_preview()
+        
     for var in [app.crop_x_var, app.crop_y_var, app.crop_width_var, app.crop_height_var]:
-        var.trace('w', lambda *args: app.update_crop_preview())
+        var.trace('w', on_coordinate_change)
     
     root.mainloop()
 

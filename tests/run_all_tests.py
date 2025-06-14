@@ -22,7 +22,7 @@ def run_test_file(test_file):
     try:
         result = subprocess.run(
             [sys.executable, test_file],
-            cwd=Path(__file__).parent,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),  # BookExtract root directory
             capture_output=True,
             text=True,
             timeout=60
@@ -71,16 +71,19 @@ def main():
     print("BookExtract Comprehensive Test Suite")
     print("=" * 60)
     
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    
     # Find all test files
     test_files = [
-        'test_intermediate.py',
-        'test_epub_generator.py',
-        'test_image_processor.py',
-        'test_ocr_processor.py',
-        'test_intermediate_to_m4b.py',
-        'test_m4b_generator.py',
-        'test_book_capture.py',
-        'test_epub_generator_extended.py',
+        os.path.join(script_dir, 'test_intermediate.py'),
+        os.path.join(script_dir, 'test_epub_generator.py'),
+        os.path.join(script_dir, 'test_image_processor.py'),
+        os.path.join(script_dir, 'test_ocr_processor.py'),
+        os.path.join(script_dir, 'test_intermediate_to_m4b.py'),
+        os.path.join(script_dir, 'test_m4b_generator.py'),
+        os.path.join(script_dir, 'test_book_capture.py'),
+        os.path.join(script_dir, 'test_epub_generator_extended.py'),
     ]
     
     # Check that all test files exist

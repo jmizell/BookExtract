@@ -18,6 +18,7 @@ This project provides a complete pipeline with intuitive GUI applications for:
 - **User-Friendly GUI Applications**: Intuitive interfaces replace complex command-line scripts
 - **Interactive Image Processing**: Mouse-based crop selection with real-time preview
 - **AI-Powered OCR Correction**: Automatically fixes OCR errors and structures content
+- **Rich Text Preview with Image Rendering**: Real-time preview with actual image display (PNG, JPEG, GIF, BMP)
 - **Unified Intermediate Format**: Common representation for both EPUB and audiobook generation
 - **Progress Tracking**: Real-time status updates and batch processing indicators
 - **Flexible API Support**: Works with OpenAI, Anthropic, OpenRouter, and other compatible APIs

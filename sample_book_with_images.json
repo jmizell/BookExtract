@@ -1,0 +1,98 @@
+[
+  {
+    "type": "title",
+    "content": "Sample Book with Image Rendering"
+  },
+  {
+    "type": "author",
+    "content": "BookExtract Demo"
+  },
+  {
+    "type": "cover",
+    "image": "test_image.png"
+  },
+  {
+    "type": "chapter_header",
+    "content": "1"
+  },
+  {
+    "type": "header",
+    "content": "Introduction to Image Rendering"
+  },
+  {
+    "type": "paragraph",
+    "content": "This sample book demonstrates the new image rendering capability in the Book Renderer Tool. Instead of showing text placeholders, actual images are now displayed in the preview."
+  },
+  {
+    "type": "paragraph",
+    "content": "The following image should appear below this text:"
+  },
+  {
+    "type": "image",
+    "image": "test_image.png",
+    "caption": "A sample test image demonstrating image rendering in the preview"
+  },
+  {
+    "type": "paragraph",
+    "content": "As you can see, images are automatically resized to fit the preview area while maintaining their aspect ratio. Cover images are displayed larger than content images."
+  },
+  {
+    "type": "sub_header",
+    "content": "Supported Image Formats"
+  },
+  {
+    "type": "paragraph",
+    "content": "The image rendering system supports the following formats:"
+  },
+  {
+    "type": "bold",
+    "content": "• PNG (Portable Network Graphics)"
+  },
+  {
+    "type": "bold",
+    "content": "• JPEG/JPG (Joint Photographic Experts Group)"
+  },
+  {
+    "type": "bold",
+    "content": "• GIF (Graphics Interchange Format)"
+  },
+  {
+    "type": "bold",
+    "content": "• BMP (Bitmap)"
+  },
+  {
+    "type": "page_division"
+  },
+  {
+    "type": "chapter_header",
+    "content": "2"
+  },
+  {
+    "type": "header",
+    "content": "Features and Benefits"
+  },
+  {
+    "type": "paragraph",
+    "content": "The enhanced preview provides several benefits:"
+  },
+  {
+    "type": "block_indent",
+    "content": "Real-time visual feedback: See exactly how your images will appear in the final output."
+  },
+  {
+    "type": "block_indent",
+    "content": "Automatic resizing: Images are intelligently resized to fit the preview while maintaining quality."
+  },
+  {
+    "type": "block_indent",
+    "content": "Error handling: Missing or invalid images show helpful error messages."
+  },
+  {
+    "type": "block_indent",
+    "content": "Memory management: Images are cached efficiently to prevent memory leaks."
+  },
+  {
+    "type": "paragraph",
+    "content": "This enhancement makes the Book Renderer Tool much more powerful for creating visually rich content!"
+  }
+]

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Book Intermediate Representation
 
@@ -12,7 +11,6 @@ The intermediate format bridges the gap between:
 """
 
 import json
-import os
 import uuid
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
@@ -369,56 +367,3 @@ class BookConverter:
             "chapters": chapters_data,
             "total_chapters": len(chapters_data)
         }
-
-
-def main():
-    """Example usage and testing."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Book Intermediate Representation Converter')
-    parser.add_argument('--convert-from-epub', metavar='BOOK_INFO_JSON',
-                       help='Convert from epub_extractor book_info.json format')
-    parser.add_argument('--convert-from-sections', metavar='SECTIONS_JSON',
-                       help='Convert from section array JSON format')
-    parser.add_argument('--output', '-o', default='book_intermediate.json',
-                       help='Output file for intermediate representation')
-    parser.add_argument('--to-sections', action='store_true',
-                       help='Convert intermediate to section array format')
-    parser.add_argument('--to-epub-format', action='store_true',
-                       help='Convert intermediate to epub_extractor format')
-    
-    args = parser.parse_args()
-    
-    book = None
-    
-    if args.convert_from_epub:
-        print(f"Converting from epub_extractor format: {args.convert_from_epub}")
-        book = BookConverter.from_epub_extractor(args.convert_from_epub)
-        
-    elif args.convert_from_sections:
-        print(f"Converting from section array format: {args.convert_from_sections}")
-        with open(args.convert_from_sections, 'r', encoding='utf-8') as f:
-            sections = json.load(f)
-        book = BookConverter.from_section_array(sections)
-    
-    if book:
-        if args.to_sections:
-            output_data = BookConverter.to_section_array(book)
-            print(f"Converted to section array format: {len(output_data)} sections")
-        elif args.to_epub_format:
-            output_data = BookConverter.to_epub_extractor_format(book)
-            print(f"Converted to epub_extractor format: {output_data['total_chapters']} chapters")
-        else:
-            output_data = book.to_dict()
-            print(f"Intermediate representation: {book.get_chapter_count()} chapters, {book.get_total_word_count()} words")
-        
-        with open(args.output, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, indent=2, ensure_ascii=False)
-        
-        print(f"Output saved to: {args.output}")
-    else:
-        print("No input format specified. Use --convert-from-epub or --convert-from-sections")
-
-
-if __name__ == "__main__":
-    main()

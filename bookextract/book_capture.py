@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Book page capture functionality - handles automated screenshot capture and navigation.
 

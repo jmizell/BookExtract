@@ -8,16 +8,13 @@ and generate M4B audiobooks with TTS, metadata, and chapter markers.
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
-import json
-import os
 import tempfile
 import threading
 import subprocess
 import shutil
 from pathlib import Path
-import uuid
-from book_intermediate import BookIntermediate, BookConverter
-from intermediate_to_m4b import process_intermediate_file_object, clean_text_for_tts
+from bookextract import BookIntermediate
+from bookextract.intermediate_to_m4b import process_intermediate_file_object, clean_text_for_tts
 
 
 class M4bGeneratorGUI:

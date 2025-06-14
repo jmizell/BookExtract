@@ -13,7 +13,7 @@ import os
 import threading
 from pathlib import Path
 from PIL import Image, ImageTk
-from book_intermediate import BookIntermediate, BookConverter
+from bookextract import BookIntermediate, BookConverter
 
 
 class RenderBookGUI:

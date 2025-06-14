@@ -166,7 +166,12 @@ BookExtract now includes a unified intermediate representation that bridges the 
 - **Enhanced Features**: Word counting, content analysis, and extensible design
 
 ### Key Files
-- `book_intermediate.py` - Core intermediate representation module
+- `bookextract/` - Core library package containing:
+  - `book_intermediate.py` - Core intermediate representation module
+  - `book_capture.py` - Automated screenshot capture functionality
+  - `ocr_processor.py` - OCR processing and content merging
+  - `image_processor.py` - Image loading, processing, and crop operations
+  - `epub_generator.py` - EPUB file generation from section array data
 - `intermediate_to_m4b.py` - M4B text file preparation
 - `intermediate_to_m4b.sh` - Complete M4B audiobook generation
 - `INTERMEDIATE_FORMAT.md` - Complete format documentation

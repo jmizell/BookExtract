@@ -10,7 +10,7 @@ import json
 import tempfile
 import os
 from pathlib import Path
-from book_intermediate import BookIntermediate, BookConverter, BookMetadata, Chapter, ContentSection
+from bookextract import BookIntermediate, BookConverter, BookMetadata, Chapter, ContentSection
 
 
 def create_sample_section_array():

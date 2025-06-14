@@ -278,7 +278,7 @@ class M4bGeneratorGUI:
         missing = []
         for cmd, desc in dependencies.items():
             try:
-                result = subprocess.run([cmd, "--version"], 
+                result = subprocess.run([cmd, "--help"],
                                       capture_output=True, text=True, timeout=5)
                 if result.returncode == 0:
                     self.log_message(f"✓ {desc} found")

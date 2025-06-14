@@ -8,13 +8,10 @@ and generate M4B audiobooks with TTS, metadata, and chapter markers.
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
-import tempfile
 import threading
-import subprocess
-import shutil
 from pathlib import Path
-from bookextract import BookIntermediate
-from bookextract.intermediate_to_m4b import process_intermediate_file_object, clean_text_for_tts
+from bookextract import BookIntermediate, M4bGenerator, M4bConfig
+from bookextract.intermediate_to_m4b import clean_text_for_tts
 
 
 class M4bGeneratorGUI:
@@ -29,8 +26,6 @@ class M4bGeneratorGUI:
         self.current_intermediate_data = None
         self.is_generating = False
         self.generation_thread = None
-        self.temp_dir = None
-        self.audio_dir = None
         
         # Default values
         self.default_input_folder = str(Path.cwd() / "out")
@@ -42,6 +37,9 @@ class M4bGeneratorGUI:
         self.audio_bitrate = tk.StringVar(value="64k")
         self.sample_rate = tk.StringVar(value="22050")
         self.output_filename = tk.StringVar()
+        
+        # M4B Generator instance
+        self.m4b_generator = None
         
         self.setup_ui()
         self.check_dependencies()
@@ -263,37 +261,27 @@ class M4bGeneratorGUI:
         
     def check_dependencies(self):
         """Check if required dependencies are available."""
-        self.log_message("Checking dependencies...")
+        # Create a temporary M4B generator to check dependencies
+        temp_generator = M4bGenerator()
+        temp_generator.set_log_callback(self.log_message)
         
-        dependencies = {
-            "python3": "Python 3 interpreter",
-            "kokoro": "Kokoro TTS engine",
-            "ffmpeg": "FFmpeg audio processing",
-            "ffprobe": "FFprobe media analysis"
-        }
+        results = temp_generator.check_dependencies()
         
-        missing = []
-        for cmd, desc in dependencies.items():
-            try:
-                result = subprocess.run([cmd, "--help"],
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    self.log_message(f"✓ {desc} found")
-                else:
-                    missing.append(desc)
-                    self.log_message(f"✗ {desc} not found", "WARNING")
-            except (subprocess.TimeoutExpired, FileNotFoundError):
-                missing.append(desc)
-                self.log_message(f"✗ {desc} not found", "WARNING")
+        # Check if any dependencies are missing
+        missing = [cmd for cmd, available in results.items() if not available]
         
         if missing:
-            self.log_message(f"Missing dependencies: {', '.join(missing)}", "ERROR")
+            dependency_names = {
+                "python3": "Python 3 interpreter",
+                "kokoro": "Kokoro TTS engine", 
+                "ffmpeg": "FFmpeg audio processing",
+                "ffprobe": "FFprobe media analysis"
+            }
+            missing_descriptions = [dependency_names.get(cmd, cmd) for cmd in missing]
             messagebox.showwarning("Dependencies Missing", 
                                  f"The following dependencies are missing:\n\n" +
-                                 "\n".join(f"• {dep}" for dep in missing) +
+                                 "\n".join(f"• {dep}" for dep in missing_descriptions) +
                                  "\n\nPlease install them before generating M4B files.")
-        else:
-            self.log_message("All dependencies found!", "SUCCESS")
             
     def open_intermediate(self):
         """Open an intermediate representation file."""
@@ -428,39 +416,28 @@ class M4bGeneratorGUI:
     def _generate_m4b_thread(self, output_path):
         """Generate M4B audiobook in a separate thread."""
         try:
-            self.log_message("Starting M4B audiobook generation...")
+            # Create M4B generator with current configuration
+            config = M4bConfig(
+                tts_model=self.tts_model.get(),
+                tts_language=self.tts_language.get(),
+                audio_bitrate=self.audio_bitrate.get(),
+                sample_rate=self.sample_rate.get()
+            )
             
-            # Create temporary directories
-            self.temp_dir = Path(tempfile.mkdtemp(prefix="m4b_temp_"))
-            self.audio_dir = Path(tempfile.mkdtemp(prefix="audio_temp_"))
+            self.m4b_generator = M4bGenerator(config)
             
-            self.log_message(f"Created temporary directories: {self.temp_dir}, {self.audio_dir}")
+            # Set up callbacks for progress and logging
+            self.m4b_generator.set_progress_callback(
+                lambda msg: self.root.after(0, lambda: self.progress_var.set(msg))
+            )
+            self.m4b_generator.set_log_callback(
+                lambda msg, level: self.root.after(0, lambda: self.log_message(msg, level))
+            )
             
-            # Step 1: Process intermediate format to create text files
-            self.root.after(0, lambda: self.progress_var.set("Processing intermediate format..."))
-            self.log_message("Processing intermediate format...")
-            
-            process_intermediate_file_object(self.current_intermediate_data, self.temp_dir)
-            
-            # Step 2: Generate audio files using TTS
-            self.root.after(0, lambda: self.progress_var.set("Generating audio files..."))
-            self.log_message("Generating audio files using Kokoro TTS...")
-            
-            self._generate_audio_files()
-            
-            # Step 3: Create M4B audiobook
-            self.root.after(0, lambda: self.progress_var.set("Creating M4B audiobook..."))
-            self.log_message("Creating M4B audiobook...")
-            
-            self._create_m4b_audiobook(output_path)
+            # Generate the M4B audiobook
+            self.m4b_generator.generate_m4b(self.current_intermediate_data, output_path)
             
             # Success
-            self.root.after(0, lambda: self.progress_var.set("M4B generation completed!"))
-            self.log_message(f"M4B audiobook created successfully: {output_path}", "SUCCESS")
-            
-            # Show file info
-            self._show_audiobook_info(output_path)
-            
             self.root.after(0, lambda: messagebox.showinfo("Success", 
                 f"M4B audiobook generated successfully!\n\nOutput: {output_path}"))
             
@@ -469,202 +446,10 @@ class M4bGeneratorGUI:
             self.root.after(0, lambda msg=error_msg: self.log_message(msg, "ERROR"))
             self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to generate M4B:\n{str(e)}"))
         finally:
-            # Cleanup
-            self._cleanup_temp_files()
             self.is_generating = False
+            self.m4b_generator = None
             self.root.after(0, self.progress_bar.stop)
             self.root.after(0, lambda: self.progress_var.set("Ready"))
-            
-    def _generate_audio_files(self):
-        """Generate audio files using Kokoro TTS."""
-        # Get list of text files in order
-        text_files = sorted(self.temp_dir.glob("*.txt"))
-        total_files = len(text_files)
-        
-        self.log_message(f"Found {total_files} text files to process")
-        
-        for i, txt_file in enumerate(text_files, 1):
-            basename = txt_file.stem
-            wav_file = self.audio_dir / f"{basename}.wav"
-            
-            self.log_message(f"Processing ({i}/{total_files}): {basename}")
-            self.root.after(0, lambda b=basename, c=i, t=total_files: 
-                          self.progress_var.set(f"Generating audio ({c}/{t}): {b}"))
-            
-            # Check if text file has content
-            if txt_file.stat().st_size == 0:
-                self.log_message(f"Skipping empty text file: {basename}", "WARNING")
-                continue
-            
-            # Generate audio using Kokoro TTS
-            cmd = [
-                "kokoro",
-                "-m", self.tts_model.get(),
-                "-l", self.tts_language.get(),
-                "-i", str(txt_file),
-                "-o", str(wav_file)
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"Kokoro TTS failed for {basename}: {result.stderr}")
-            
-            # Verify audio file was created
-            if not wav_file.exists():
-                raise Exception(f"Audio file not created: {wav_file}")
-                
-        self.log_message("Audio generation completed")
-        
-    def _create_m4b_audiobook(self, output_path):
-        """Create M4B audiobook from audio files."""
-        # Get book metadata
-        metadata = self.current_intermediate_data.metadata
-        
-        # Create file list for ffmpeg
-        audio_files = sorted(self.audio_dir.glob("*.wav"))
-        if not audio_files:
-            raise Exception("No audio files found")
-            
-        filelist_path = self.audio_dir / "filelist.txt"
-        with open(filelist_path, 'w') as f:
-            for audio_file in audio_files:
-                f.write(f"file '{audio_file.name}'\n")
-        
-        # Create chapter metadata
-        metadata_path = self.audio_dir / "metadata.txt"
-        self._create_chapter_metadata(metadata_path, audio_files)
-        
-        # Combine all audio files and create M4B with metadata and chapters
-        cmd = [
-            "ffmpeg",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(filelist_path),
-            "-i", str(metadata_path),
-            "-map_metadata", "1",
-            "-c:a", "aac",
-            "-b:a", self.audio_bitrate.get(),
-            "-ar", self.sample_rate.get(),
-            "-movflags", "+faststart",
-            "-metadata", f"title={metadata.title}",
-            "-metadata", f"artist={metadata.author}",
-            "-metadata", f"album={metadata.title}",
-            "-metadata", "genre=Audiobook",
-            "-metadata", "comment=Generated using M4B Audiobook Generator",
-            "-y", str(output_path)
-        ]
-        
-        # Change to audio directory for relative paths
-        result = subprocess.run(cmd, cwd=self.audio_dir, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise Exception(f"FFmpeg failed: {result.stderr}")
-        
-        if not Path(output_path).exists():
-            raise Exception("M4B file was not created")
-            
-    def _create_chapter_metadata(self, metadata_path, audio_files):
-        """Create chapter metadata for ffmpeg."""
-        metadata = self.current_intermediate_data.metadata
-        
-        with open(metadata_path, 'w') as f:
-            # Write metadata header
-            f.write(";FFMETADATA1\n")
-            f.write(f"title={metadata.title}\n")
-            f.write(f"artist={metadata.author}\n")
-            f.write(f"album={metadata.title}\n")
-            f.write("genre=Audiobook\n")
-            f.write("comment=Generated using M4B Audiobook Generator\n\n")
-            
-            # Calculate chapter start times
-            current_time = 0
-            
-            for audio_file in audio_files:
-                basename = audio_file.stem
-                
-                # Get duration of current audio file in milliseconds
-                cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", 
-                      "-of", "csv=p=0", str(audio_file)]
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                if result.returncode != 0:
-                    raise Exception(f"Failed to get duration for {audio_file}")
-                
-                duration_seconds = float(result.stdout.strip())
-                duration_ms = int(duration_seconds * 1000)
-                
-                # Determine chapter title
-                if basename == "00_title":
-                    chapter_title = "Title Page"
-                else:
-                    # Try to get chapter title from the intermediate data
-                    try:
-                        chapter_num = int(basename.split('_')[0])
-                        chapter = next((ch for ch in self.current_intermediate_data.chapters 
-                                      if ch.number == chapter_num), None)
-                        if chapter:
-                            chapter_title = f"Chapter {chapter.number}: {chapter.title}"
-                        else:
-                            chapter_title = f"Chapter {chapter_num}"
-                    except (ValueError, IndexError):
-                        chapter_title = basename.replace('_', ' ').title()
-                
-                # Write chapter metadata
-                f.write("[CHAPTER]\n")
-                f.write("TIMEBASE=1/1000\n")
-                f.write(f"START={current_time}\n")
-                f.write(f"END={current_time + duration_ms}\n")
-                f.write(f"title={chapter_title}\n\n")
-                
-                current_time += duration_ms
-                
-    def _show_audiobook_info(self, m4b_path):
-        """Show information about the generated audiobook."""
-        try:
-            # Get file size
-            file_size = Path(m4b_path).stat().st_size
-            file_size_mb = file_size / (1024 * 1024)
-            
-            # Get duration
-            cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration", 
-                  "-of", "csv=p=0", str(m4b_path)]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0:
-                duration_seconds = float(result.stdout.strip())
-                hours = int(duration_seconds // 3600)
-                minutes = int((duration_seconds % 3600) // 60)
-                seconds = int(duration_seconds % 60)
-                duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            else:
-                duration_str = "Unknown"
-            
-            metadata = self.current_intermediate_data.metadata
-            
-            self.log_message("Audiobook Information:")
-            self.log_message("=" * 30)
-            self.log_message(f"Title: {metadata.title}")
-            self.log_message(f"Author: {metadata.author}")
-            self.log_message(f"Chapters: {len(self.current_intermediate_data.chapters)}")
-            self.log_message(f"File size: {file_size_mb:.1f} MB")
-            self.log_message(f"Duration: {duration_str}")
-            self.log_message(f"Output file: {m4b_path}")
-            self.log_message("=" * 30)
-            
-        except Exception as e:
-            self.log_message(f"Could not get audiobook info: {str(e)}", "WARNING")
-            
-    def _cleanup_temp_files(self):
-        """Clean up temporary files and directories."""
-        try:
-            if self.temp_dir and self.temp_dir.exists():
-                shutil.rmtree(self.temp_dir)
-                self.log_message(f"Cleaned up temporary directory: {self.temp_dir}")
-            if self.audio_dir and self.audio_dir.exists():
-                shutil.rmtree(self.audio_dir)
-                self.log_message(f"Cleaned up audio directory: {self.audio_dir}")
-        except Exception as e:
-            self.log_message(f"Error cleaning up temporary files: {str(e)}", "WARNING")
-        finally:
-            self.temp_dir = None
-            self.audio_dir = None
             
     def load_default_intermediate(self):
         """Try to load a default intermediate file if available."""
@@ -739,7 +524,7 @@ def main():
     def on_closing():
         if app.is_generating:
             if messagebox.askokcancel("Quit", "M4B generation is in progress. Do you want to quit anyway?"):
-                app._cleanup_temp_files()
+                # Cleanup will be handled by the M4bGenerator when the thread finishes
                 root.destroy()
         else:
             root.destroy()

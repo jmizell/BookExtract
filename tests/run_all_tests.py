@@ -73,14 +73,14 @@ def main():
     
     # Find all test files
     test_files = [
-        'tests/test_intermediate.py',
-        'tests/test_epub_generator.py',
-        'tests/test_image_processor.py',
-        'tests/test_ocr_processor.py',
-        'tests/test_intermediate_to_m4b.py',
-        'tests/test_m4b_generator.py',
-        'tests/test_book_capture.py',
-        'tests/test_epub_generator_extended.py',
+        'test_intermediate.py',
+        'test_epub_generator.py',
+        'test_image_processor.py',
+        'test_ocr_processor.py',
+        'test_intermediate_to_m4b.py',
+        'test_m4b_generator.py',
+        'test_book_capture.py',
+        'test_epub_generator_extended.py',
     ]
     
     # Check that all test files exist

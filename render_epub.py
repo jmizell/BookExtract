@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-GUI version of render.py - A tkinter interface for EPUB generation and preview.
+EPUB Renderer Tool - A tkinter interface for EPUB generation from intermediate format.
 
-This application provides a user-friendly interface to edit book JSON data,
-generate EPUB files, and preview the rendered content.
+This application provides a user-friendly interface to load intermediate format files
+and generate EPUB files with preview capabilities.
 """
 
 import tkinter as tk
@@ -21,16 +21,16 @@ import html
 from book_intermediate import BookIntermediate, BookConverter
 
 
-class RenderGUI:
+class RenderEpubGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("EPUB Render Tool")
-        self.root.geometry("1200x800")
+        self.root.title("EPUB Renderer Tool")
+        self.root.geometry("1000x700")
         self.root.resizable(True, True)
         
         # State variables
-        self.current_json_file = None
-        self.current_json_data = None
+        self.current_intermediate_file = None
+        self.current_intermediate_data = None
         self.is_rendering = False
         self.render_thread = None
         self.temp_epub_path = None
@@ -40,7 +40,7 @@ class RenderGUI:
         self.default_output_folder = str(Path.cwd() / "out")
         
         self.setup_ui()
-        self.load_default_json()
+        self.load_default_intermediate()
         
     def create_menu(self):
         """Create the application menu bar."""
@@ -50,46 +50,29 @@ class RenderGUI:
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="New", command=self.new_json, accelerator="Ctrl+N")
-        file_menu.add_command(label="Open JSON...", command=self.open_json, accelerator="Ctrl+O")
-        file_menu.add_command(label="Open Intermediate...", command=self.open_intermediate)
-        file_menu.add_separator()
-        file_menu.add_command(label="Save JSON", command=self.save_json, accelerator="Ctrl+S")
-        file_menu.add_command(label="Save JSON As...", command=self.save_json_as, accelerator="Ctrl+Shift+S")
-        file_menu.add_command(label="Save Intermediate As...", command=self.save_intermediate_as)
+        file_menu.add_command(label="Open Intermediate...", command=self.open_intermediate, accelerator="Ctrl+O")
         file_menu.add_separator()
         file_menu.add_command(label="Export EPUB...", command=self.export_epub, accelerator="Ctrl+E")
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.root.quit, accelerator="Ctrl+Q")
-        
-        # Edit menu
-        edit_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Edit", menu=edit_menu)
-        edit_menu.add_command(label="Format JSON", command=self.format_json, accelerator="Ctrl+F")
-        edit_menu.add_command(label="Validate JSON", command=self.validate_json, accelerator="Ctrl+V")
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Clear Log", command=self.clear_log)
         
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
         view_menu.add_command(label="Refresh Preview", command=self.refresh_preview, accelerator="F5")
         view_menu.add_command(label="Open EPUB in Browser", command=self.open_epub_in_browser, accelerator="Ctrl+B")
+        view_menu.add_separator()
+        view_menu.add_command(label="Clear Log", command=self.clear_log)
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
         help_menu.add_command(label="About", command=self.show_about)
-        help_menu.add_command(label="JSON Format Help", command=self.show_json_help)
+        help_menu.add_command(label="Intermediate Format Help", command=self.show_format_help)
         
         # Bind keyboard shortcuts
-        self.root.bind('<Control-n>', lambda e: self.new_json())
-        self.root.bind('<Control-o>', lambda e: self.open_json())
-        self.root.bind('<Control-s>', lambda e: self.save_json())
-        self.root.bind('<Control-Shift-S>', lambda e: self.save_json_as())
+        self.root.bind('<Control-o>', lambda e: self.open_intermediate())
         self.root.bind('<Control-e>', lambda e: self.export_epub())
-        self.root.bind('<Control-f>', lambda e: self.format_json())
-        self.root.bind('<Control-v>', lambda e: self.validate_json())
         self.root.bind('<Control-b>', lambda e: self.open_epub_in_browser())
         self.root.bind('<Control-q>', lambda e: self.root.quit())
         self.root.bind('<F5>', lambda e: self.refresh_preview())
@@ -108,32 +91,65 @@ class RenderGUI:
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(0, weight=1)
         
-        # Left panel - JSON Editor
-        left_frame = ttk.LabelFrame(main_frame, text="JSON Editor", padding="5")
+        # Left panel - Book Information
+        left_frame = ttk.LabelFrame(main_frame, text="Book Information", padding="5")
         left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
         left_frame.columnconfigure(0, weight=1)
-        left_frame.rowconfigure(1, weight=1)
+        left_frame.rowconfigure(2, weight=1)
         
-        # JSON editor toolbar
-        json_toolbar = ttk.Frame(left_frame)
-        json_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
+        # File info toolbar
+        file_toolbar = ttk.Frame(left_frame)
+        file_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         
-        ttk.Button(json_toolbar, text="Open", command=self.open_json).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(json_toolbar, text="Save", command=self.save_json).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(json_toolbar, text="Format", command=self.format_json).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(json_toolbar, text="Validate", command=self.validate_json).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(file_toolbar, text="Open Intermediate", command=self.open_intermediate).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(file_toolbar, text="Export EPUB", command=self.export_epub).pack(side=tk.LEFT, padx=(0, 2))
         
-        # JSON text editor
-        self.json_editor = scrolledtext.ScrolledText(
-            left_frame,
-            wrap=tk.NONE,
-            font=("Consolas", 10),
-            undo=True,
-            maxundo=50
-        )
-        self.json_editor.grid(row=1, column=0, sticky="nsew")
+        # Book metadata display
+        metadata_frame = ttk.LabelFrame(left_frame, text="Metadata", padding="5")
+        metadata_frame.grid(row=1, column=0, sticky="ew", pady=(0, 5))
+        metadata_frame.columnconfigure(1, weight=1)
         
-        # Right panel - Preview
+        # Metadata fields
+        ttk.Label(metadata_frame, text="Title:").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        self.title_var = tk.StringVar()
+        ttk.Label(metadata_frame, textvariable=self.title_var, font=("Arial", 10, "bold")).grid(row=0, column=1, sticky="w")
+        
+        ttk.Label(metadata_frame, text="Author:").grid(row=1, column=0, sticky="w", padx=(0, 5))
+        self.author_var = tk.StringVar()
+        ttk.Label(metadata_frame, textvariable=self.author_var).grid(row=1, column=1, sticky="w")
+        
+        ttk.Label(metadata_frame, text="Language:").grid(row=2, column=0, sticky="w", padx=(0, 5))
+        self.language_var = tk.StringVar()
+        ttk.Label(metadata_frame, textvariable=self.language_var).grid(row=2, column=1, sticky="w")
+        
+        ttk.Label(metadata_frame, text="Chapters:").grid(row=3, column=0, sticky="w", padx=(0, 5))
+        self.chapters_var = tk.StringVar()
+        ttk.Label(metadata_frame, textvariable=self.chapters_var).grid(row=3, column=1, sticky="w")
+        
+        ttk.Label(metadata_frame, text="Word Count:").grid(row=4, column=0, sticky="w", padx=(0, 5))
+        self.word_count_var = tk.StringVar()
+        ttk.Label(metadata_frame, textvariable=self.word_count_var).grid(row=4, column=1, sticky="w")
+        
+        # Chapter list
+        chapters_frame = ttk.LabelFrame(left_frame, text="Chapters", padding="5")
+        chapters_frame.grid(row=2, column=0, sticky="nsew")
+        chapters_frame.columnconfigure(0, weight=1)
+        chapters_frame.rowconfigure(0, weight=1)
+        
+        # Chapter listbox with scrollbar
+        list_frame = ttk.Frame(chapters_frame)
+        list_frame.grid(row=0, column=0, sticky="nsew")
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+        
+        self.chapters_listbox = tk.Listbox(list_frame, font=("Arial", 9))
+        self.chapters_listbox.grid(row=0, column=0, sticky="nsew")
+        
+        chapters_scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.chapters_listbox.yview)
+        chapters_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.chapters_listbox.configure(yscrollcommand=chapters_scrollbar.set)
+        
+        # Right panel - EPUB Preview
         right_frame = ttk.LabelFrame(main_frame, text="EPUB Preview", padding="5")
         right_frame.grid(row=0, column=1, sticky="nsew", padx=(2, 0))
         right_frame.columnconfigure(0, weight=1)
@@ -144,7 +160,6 @@ class RenderGUI:
         preview_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         
         ttk.Button(preview_toolbar, text="Refresh", command=self.refresh_preview).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(preview_toolbar, text="Export EPUB", command=self.export_epub).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(preview_toolbar, text="Open in Browser", command=self.open_epub_in_browser).pack(side=tk.LEFT, padx=(0, 2))
         
         # Preview area
@@ -170,7 +185,7 @@ class RenderGUI:
         # Log text area
         self.log_console = scrolledtext.ScrolledText(
             log_frame,
-            height=8,
+            height=6,
             wrap=tk.WORD,
             font=("Consolas", 9),
             state=tk.DISABLED
@@ -183,7 +198,8 @@ class RenderGUI:
     def log_message(self, message, level="INFO"):
         """Add a message to the log console."""
         self.log_console.config(state=tk.NORMAL)
-        timestamp = tk.datetime.datetime.now().strftime("%H:%M:%S")
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         self.log_console.insert(tk.END, f"[{timestamp}] {level}: {message}\n")
         self.log_console.see(tk.END)
         self.log_console.config(state=tk.DISABLED)
@@ -195,117 +211,16 @@ class RenderGUI:
         self.log_console.delete(1.0, tk.END)
         self.log_console.config(state=tk.DISABLED)
         
-    def new_json(self):
-        """Create a new JSON document."""
-        if self.check_unsaved_changes():
-            return
-            
-        default_json = [
-            {
-                "type": "title",
-                "content": "Sample Book Title"
-            },
-            {
-                "type": "author",
-                "content": "Sample Author"
-            },
-            {
-                "type": "cover",
-                "image": "cover.png"
-            },
-            {
-                "type": "chapter_header",
-                "content": "1"
-            },
-            {
-                "type": "paragraph",
-                "content": "This is a sample paragraph in the first chapter."
-            }
-        ]
-        
-        self.json_editor.delete(1.0, tk.END)
-        self.json_editor.insert(1.0, json.dumps(default_json, indent=2))
-        self.current_json_file = None
-        self.current_json_data = default_json
-        self.log_message("Created new JSON document")
-        self.refresh_preview()
-        
-    def open_json(self):
-        """Open a JSON file."""
-        if self.check_unsaved_changes():
-            return
-            
-        file_path = filedialog.askopenfilename(
-            title="Open JSON File",
-            initialdir=self.default_input_folder,
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                
-                self.json_editor.delete(1.0, tk.END)
-                self.json_editor.insert(1.0, json.dumps(data, indent=2))
-                self.current_json_file = file_path
-                self.current_json_data = data
-                self.log_message(f"Opened JSON file: {file_path}")
-                self.refresh_preview()
-                
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to open JSON file:\n{str(e)}")
-                self.log_message(f"Error opening JSON file: {str(e)}", "ERROR")
-                
-    def save_json(self):
-        """Save the current JSON file."""
-        if self.current_json_file:
-            self._save_json_to_file(self.current_json_file)
-        else:
-            self.save_json_as()
-            
-    def save_json_as(self):
-        """Save the JSON file with a new name."""
-        file_path = filedialog.asksaveasfilename(
-            title="Save JSON File",
-            initialdir=self.default_output_folder,
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            self._save_json_to_file(file_path)
-            self.current_json_file = file_path
-            
-    def _save_json_to_file(self, file_path):
-        """Save JSON content to a file."""
-        try:
-            # Validate JSON first
-            json_text = self.json_editor.get(1.0, tk.END).strip()
-            data = json.loads(json_text)
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-                
-            self.current_json_data = data
-            self.log_message(f"Saved JSON file: {file_path}")
-            
-        except json.JSONDecodeError as e:
-            messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
-            self.log_message(f"JSON validation error: {str(e)}", "ERROR")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save JSON file:\n{str(e)}")
-            self.log_message(f"Error saving JSON file: {str(e)}", "ERROR")
-    
     def open_intermediate(self):
         """Open an intermediate representation file."""
-        if self.check_unsaved_changes():
-            return
-            
         file_path = filedialog.askopenfilename(
             title="Open Intermediate File",
             initialdir=self.default_input_folder,
-            filetypes=[("Intermediate files", "*.json"), ("All files", "*.*")]
+            filetypes=[
+                ("Intermediate files", "*.json"),
+                ("JSON files", "*.json"),
+                ("All files", "*.*")
+            ]
         )
         
         if file_path:
@@ -313,13 +228,10 @@ class RenderGUI:
                 # Load intermediate representation
                 intermediate = BookIntermediate.load_from_file(file_path)
                 
-                # Convert to section array format for editing
-                sections = BookConverter.to_section_array(intermediate)
-                
-                self.json_editor.delete(1.0, tk.END)
-                self.json_editor.insert(1.0, json.dumps(sections, indent=2))
-                self.current_json_file = file_path
-                self.current_json_data = sections
+                self.current_intermediate_file = file_path
+                self.current_intermediate_data = intermediate
+                self.update_metadata_display(intermediate)
+                self.update_chapters_list(intermediate)
                 self.log_message(f"Opened intermediate file: {file_path}")
                 self.log_message(f"Loaded {intermediate.get_chapter_count()} chapters, {intermediate.get_total_word_count()} words")
                 self.refresh_preview()
@@ -328,160 +240,29 @@ class RenderGUI:
                 messagebox.showerror("Error", f"Failed to open intermediate file:\n{str(e)}")
                 self.log_message(f"Error opening intermediate file: {str(e)}", "ERROR")
     
-    def save_intermediate_as(self):
-        """Save the current JSON as an intermediate representation file."""
-        try:
-            # Validate JSON first
-            json_text = self.json_editor.get(1.0, tk.END).strip()
-            if not json_text:
-                messagebox.showwarning("Warning", "No JSON content to save")
-                return
-                
-            sections = json.loads(json_text)
-            
-            # Convert to intermediate representation
-            intermediate = BookConverter.from_section_array(sections)
-            
-            # Get title for default filename
-            default_filename = f"{intermediate.metadata.title} - {intermediate.metadata.author}.intermediate.json"
-            
-            # Ask for save location
-            file_path = filedialog.asksaveasfilename(
-                title="Save Intermediate File",
-                initialdir=self.default_output_folder,
-                initialfile=default_filename,
-                defaultextension=".json",
-                filetypes=[("Intermediate files", "*.json"), ("All files", "*.*")]
-            )
-            
-            if file_path:
-                intermediate.save_to_file(file_path)
-                self.log_message(f"Saved intermediate representation to: {file_path}")
-                self.log_message(f"Saved {intermediate.get_chapter_count()} chapters, {intermediate.get_total_word_count()} words")
-                messagebox.showinfo("Success", f"Intermediate representation saved to:\n{file_path}")
-                
-        except json.JSONDecodeError as e:
-            messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
-            self.log_message(f"Save intermediate error - JSON parsing: {str(e)}", "ERROR")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save intermediate file:\n{str(e)}")
-            self.log_message(f"Save intermediate error: {str(e)}", "ERROR")
-            
-    def format_json(self):
-        """Format the JSON in the editor."""
-        try:
-            json_text = self.json_editor.get(1.0, tk.END).strip()
-            data = json.loads(json_text)
-            formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
-            
-            self.json_editor.delete(1.0, tk.END)
-            self.json_editor.insert(1.0, formatted_json)
-            self.log_message("JSON formatted successfully")
-            
-        except json.JSONDecodeError as e:
-            messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
-            self.log_message(f"JSON formatting error: {str(e)}", "ERROR")
-            
-    def validate_json(self):
-        """Validate the JSON in the editor and insert stubs for missing required sections."""
-        try:
-            json_text = self.json_editor.get(1.0, tk.END).strip()
-            data = json.loads(json_text)
-            
-            # Basic validation for required fields
-            has_title = any(item.get('type') == 'title' for item in data)
-            has_author = any(item.get('type') == 'author' for item in data)
-            has_cover = any(item.get('type') == 'cover' for item in data)
-            
-            missing_sections = []
-            stubs_added = []
-            
-            # Check for missing sections and prepare stubs
-            if not has_title:
-                missing_sections.append("title")
-            if not has_author:
-                missing_sections.append("author")
-            if not has_cover:
-                missing_sections.append("cover")
-                
-            if missing_sections:
-                # Ask user if they want to add stubs
-                response = messagebox.askyesno(
-                    "Missing Required Sections",
-                    f"The following required sections are missing:\n" + 
-                    "\n".join(f"• {section}" for section in missing_sections) +
-                    "\n\nWould you like to automatically add stub entries for these sections?"
-                )
-                
-                if response:
-                    # Create a new data list with stubs inserted at the beginning
-                    new_data = []
-                    
-                    # Add missing stubs at the beginning
-                    if not has_title:
-                        new_data.append({
-                            "type": "title",
-                            "content": "Your Book Title Here"
-                        })
-                        stubs_added.append("title")
-                        
-                    if not has_author:
-                        new_data.append({
-                            "type": "author", 
-                            "content": "Your Name Here"
-                        })
-                        stubs_added.append("author")
-                        
-                    if not has_cover:
-                        # Determine cover image path based on current JSON file location
-                        if self.current_json_file:
-                            # Use the same name as JSON file but with .png extension
-                            json_path = Path(self.current_json_file)
-                            cover_image = json_path.stem + ".png"
-                        else:
-                            # Default fallback if no file is loaded
-                            cover_image = "cover.png"
-                            
-                        new_data.append({
-                            "type": "cover",
-                            "image": cover_image
-                        })
-                        stubs_added.append("cover")
-                    
-                    # Add existing data
-                    new_data.extend(data)
-                    
-                    # Update the editor with the new JSON
-                    formatted_json = json.dumps(new_data, indent=2, ensure_ascii=False)
-                    self.json_editor.delete(1.0, tk.END)
-                    self.json_editor.insert(1.0, formatted_json)
-                    
-                    # Log the changes
-                    self.log_message(f"Added stub entries for: {', '.join(stubs_added)}")
-                    messagebox.showinfo(
-                        "Stubs Added", 
-                        f"Added stub entries for: {', '.join(stubs_added)}\n\n" +
-                        "Please update the placeholder content with your actual information."
-                    )
-                else:
-                    # User declined to add stubs
-                    self.log_message(f"JSON validation issues: {', '.join(missing_sections)}", "WARNING")
-                    messagebox.showwarning(
-                        "Validation Issues", 
-                        "JSON validation issues:\n" + 
-                        "\n".join(f"• Missing '{section}' entry" for section in missing_sections)
-                    )
-            else:
-                # All required sections present
-                messagebox.showinfo("Validation", "JSON is valid! All required sections are present.")
-                self.log_message("JSON validation successful - all required sections present")
-                
-        except json.JSONDecodeError as e:
-            messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
-            self.log_message(f"JSON validation error: {str(e)}", "ERROR")
+    def update_metadata_display(self, intermediate):
+        """Update the metadata display with book information."""
+        self.title_var.set(intermediate.metadata.title or "Unknown Title")
+        self.author_var.set(intermediate.metadata.author or "Unknown Author")
+        self.language_var.set(intermediate.metadata.language or "Unknown")
+        self.chapters_var.set(str(intermediate.get_chapter_count()))
+        self.word_count_var.set(f"{intermediate.get_total_word_count():,}")
+        
+    def update_chapters_list(self, intermediate):
+        """Update the chapters list with chapter information."""
+        self.chapters_listbox.delete(0, tk.END)
+        
+        for chapter in intermediate.chapters:
+            word_count = chapter.get_word_count()
+            chapter_text = f"Chapter {chapter.number}: {chapter.title} ({word_count:,} words)"
+            self.chapters_listbox.insert(tk.END, chapter_text)
             
     def refresh_preview(self):
         """Refresh the EPUB preview."""
+        if not self.current_intermediate_data:
+            self.log_message("No intermediate data loaded", "WARNING")
+            return
+            
         if self.is_rendering:
             return
             
@@ -495,19 +276,18 @@ class RenderGUI:
         try:
             self.log_message("Generating EPUB preview...")
             
-            # Parse JSON
-            json_text = self.json_editor.get(1.0, tk.END).strip()
-            if not json_text:
-                self.log_message("No JSON content to preview", "WARNING")
+            if not self.current_intermediate_data:
+                self.log_message("No intermediate data to preview", "WARNING")
                 return
-                
-            data = json.loads(json_text)
+            
+            # Convert intermediate to section array for EPUB generation
+            sections = BookConverter.to_section_array(self.current_intermediate_data)
             
             # Create temporary EPUB
             with tempfile.NamedTemporaryFile(suffix='.epub', delete=False) as temp_file:
                 self.temp_epub_path = temp_file.name
                 
-            self._generate_epub_from_data(data, self.temp_epub_path)
+            self._generate_epub_from_data(sections, self.temp_epub_path)
             
             # Extract and display content
             preview_text = self._extract_epub_preview(self.temp_epub_path)
@@ -515,9 +295,6 @@ class RenderGUI:
             # Update preview area
             self.root.after(0, self._update_preview_area, preview_text)
             
-        except json.JSONDecodeError as e:
-            error_msg = f"JSON parsing error: {str(e)}"
-            self.root.after(0, lambda msg=error_msg: self.log_message(msg, "ERROR"))
         except Exception as e:
             error_msg = f"Preview generation error: {str(e)}"
             self.root.after(0, lambda msg=error_msg: self.log_message(msg, "ERROR"))
@@ -570,26 +347,16 @@ class RenderGUI:
         return text
         
     def export_epub(self):
-        """Export the current JSON as an EPUB file."""
-        try:
-            # Validate JSON first
-            json_text = self.json_editor.get(1.0, tk.END).strip()
-            if not json_text:
-                messagebox.showwarning("Warning", "No JSON content to export")
-                return
-                
-            data = json.loads(json_text)
+        """Export the current intermediate data as an EPUB file."""
+        if not self.current_intermediate_data:
+            messagebox.showwarning("Warning", "No intermediate data loaded")
+            return
             
-            # Get title for default filename
-            title = "book"
-            author = "unknown"
-            for item in data:
-                if item.get('type') == 'title':
-                    title = item.get('content', 'book')
-                elif item.get('type') == 'author':
-                    author = item.get('content', 'unknown')
-                    
-            default_filename = f"{title} - {author}.epub"
+        try:
+            intermediate = self.current_intermediate_data
+            
+            # Get default filename from metadata
+            default_filename = f"{intermediate.metadata.title} - {intermediate.metadata.author}.epub"
             
             # Ask for save location
             file_path = filedialog.asksaveasfilename(
@@ -602,18 +369,19 @@ class RenderGUI:
             
             if file_path:
                 self.log_message(f"Exporting EPUB to: {file_path}")
-                self._generate_epub_from_data(data, file_path)
+                
+                # Convert intermediate to section array for EPUB generation
+                sections = BookConverter.to_section_array(intermediate)
+                self._generate_epub_from_data(sections, file_path)
+                
                 messagebox.showinfo("Success", f"EPUB exported successfully to:\n{file_path}")
                 
-        except json.JSONDecodeError as e:
-            messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")
-            self.log_message(f"Export error - JSON parsing: {str(e)}", "ERROR")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to export EPUB:\n{str(e)}")
             self.log_message(f"Export error: {str(e)}", "ERROR")
             
     def _generate_epub_from_data(self, book_data, output_path):
-        """Generate EPUB from JSON data (adapted from original render.py)."""
+        """Generate EPUB from section array data (adapted from original render.py)."""
         # Create a new EPUB book
         book = epub.EpubBook()
         
@@ -651,8 +419,8 @@ class RenderGUI:
         book.add_author(author)
         
         # Handle cover image
-        if self.current_json_file:
-            cover_path = os.path.join(os.path.dirname(self.current_json_file), cover_image)
+        if self.current_intermediate_file:
+            cover_path = os.path.join(os.path.dirname(self.current_intermediate_file), cover_image)
         else:
             cover_path = os.path.join(self.default_input_folder, cover_image)
             
@@ -709,8 +477,8 @@ class RenderGUI:
                 image_counter += 1
                 
                 # Try to load the actual image
-                if self.current_json_file:
-                    img_path = os.path.join(os.path.dirname(self.current_json_file), item['image'])
+                if self.current_intermediate_file:
+                    img_path = os.path.join(os.path.dirname(self.current_intermediate_file), item['image'])
                 else:
                     img_path = os.path.join(self.default_input_folder, item['image'])
                     
@@ -863,95 +631,83 @@ class RenderGUI:
             messagebox.showerror("Error", f"Failed to open EPUB:\n{str(e)}")
             self.log_message(f"Error opening EPUB: {str(e)}", "ERROR")
             
-    def load_default_json(self):
-        """Load default JSON file if available."""
-        default_path = os.path.join(self.default_input_folder, "book.json")
-        if os.path.exists(default_path):
-            try:
-                with open(default_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+    def load_default_intermediate(self):
+        """Load default intermediate file if available."""
+        default_paths = [
+            os.path.join(self.default_input_folder, "book_intermediate.json"),
+            os.path.join(self.default_input_folder, "book.intermediate.json")
+        ]
+        
+        for default_path in default_paths:
+            if os.path.exists(default_path):
+                try:
+                    intermediate = BookIntermediate.load_from_file(default_path)
                     
-                self.json_editor.insert(1.0, json.dumps(data, indent=2))
-                self.current_json_file = default_path
-                self.current_json_data = data
-                self.log_message(f"Loaded default JSON: {default_path}")
-                self.refresh_preview()
-                
-            except Exception as e:
-                self.log_message(f"Could not load default JSON: {str(e)}", "WARNING")
-                self.new_json()
-        else:
-            self.new_json()
-            
-    def check_unsaved_changes(self):
-        """Check if there are unsaved changes and prompt user."""
-        try:
-            current_text = self.json_editor.get(1.0, tk.END).strip()
-            if self.current_json_data:
-                saved_text = json.dumps(self.current_json_data, indent=2)
-                if current_text != saved_text:
-                    result = messagebox.askyesnocancel(
-                        "Unsaved Changes",
-                        "You have unsaved changes. Do you want to save them?"
-                    )
-                    if result is True:  # Yes
-                        self.save_json()
-                        return False
-                    elif result is False:  # No
-                        return False
-                    else:  # Cancel
-                        return True
-        except:
-            pass
-        return False
+                    self.current_intermediate_file = default_path
+                    self.current_intermediate_data = intermediate
+                    self.update_metadata_display(intermediate)
+                    self.update_chapters_list(intermediate)
+                    self.log_message(f"Loaded default intermediate: {default_path}")
+                    self.refresh_preview()
+                    return
+                    
+                except Exception as e:
+                    self.log_message(f"Could not load default intermediate: {str(e)}", "WARNING")
+                    
+        self.log_message("No default intermediate file found")
         
     def show_about(self):
         """Show about dialog."""
         messagebox.showinfo(
-            "About EPUB Render Tool",
-            "EPUB Render Tool v1.0\n\n"
-            "A GUI tool for editing book JSON data and generating EPUB files.\n\n"
+            "About EPUB Renderer Tool",
+            "EPUB Renderer Tool v1.0\n\n"
+            "A specialized tool for generating EPUB files from intermediate format.\n\n"
             "Features:\n"
-            "• JSON editor with syntax validation\n"
-            "• Live EPUB preview\n"
-            "• Export to EPUB format\n"
-            "• Integrated logging console"
+            "• Load intermediate format files\n"
+            "• Generate EPUB files\n"
+            "• EPUB preview\n"
+            "• Book metadata display\n"
+            "• Chapter organization view"
         )
         
-    def show_json_help(self):
-        """Show JSON format help."""
-        help_text = """JSON Format Help
+    def show_format_help(self):
+        """Show intermediate format help."""
+        help_text = """Intermediate Format Help
 
-The JSON should be an array of objects, where each object represents a book element:
+The EPUB Renderer Tool works with BookExtract intermediate format files.
 
-Required elements:
-• {"type": "title", "content": "Book Title"}
-• {"type": "author", "content": "Author Name"}
-• {"type": "cover", "image": "cover.png"}
+Supported File Types:
+• .json files containing intermediate format data
+• Files created by epub_extractor.py with --intermediate flag
+• Files saved from render_book.py as intermediate format
 
-Content elements:
-• {"type": "chapter_header", "content": "Chapter Number"}
-• {"type": "paragraph", "content": "Text content"}
-• {"type": "header", "content": "Section header"}
-• {"type": "sub_header", "content": "Subsection header"}
-• {"type": "bold", "content": "Bold text"}
-• {"type": "block_indent", "content": "Indented block"}
-• {"type": "image", "image": "image.png", "caption": "Optional caption"}
-• {"type": "page_division"} - Creates a page break
+File Structure:
+The intermediate format contains:
+• Book metadata (title, author, language, etc.)
+• Organized chapters with content sections
+• Word count and chapter statistics
 
-Images should be relative paths from the JSON file location.
+Loading Files:
+• Use File → Open Intermediate... to load files
+• The tool will display book metadata and chapter list
+• Preview shows EPUB content extracted from generated file
 
-Auto-Stub Feature:
-When you validate JSON and required sections are missing, the application will offer to automatically insert stub entries with placeholder content:
-• title: "Your Book Title Here"
-• author: "Your Name Here"
-• cover: Uses same filename as JSON file with .png extension (e.g., "my_book.json" → "my_book.png")
+Generating EPUB:
+• Use File → Export EPUB... to create EPUB files
+• Images are loaded from the same directory as the intermediate file
+• Missing images are replaced with placeholders
 
-This helps ensure your JSON has all necessary elements for EPUB generation.
+Requirements:
+• Intermediate files must contain title, author, and cover sections
+• Image files should be in the same directory as the intermediate file
+• Cover image is required for EPUB generation
+
+For more information about the intermediate format, see:
+INTERMEDIATE_FORMAT.md
 """
         
         help_window = tk.Toplevel(self.root)
-        help_window.title("JSON Format Help")
+        help_window.title("Intermediate Format Help")
         help_window.geometry("600x500")
         help_window.resizable(True, True)
         
@@ -968,12 +724,10 @@ def main():
     tk.datetime = datetime
     
     root = tk.Tk()
-    app = RenderGUI(root)
+    app = RenderEpubGUI(root)
     
     # Handle window closing
     def on_closing():
-        if app.check_unsaved_changes():
-            return
         root.destroy()
         
     root.protocol("WM_DELETE_WINDOW", on_closing)

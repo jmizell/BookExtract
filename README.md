@@ -41,17 +41,21 @@ This project provides a complete pipeline with intuitive GUI applications for:
   - FFprobe (media analysis)
 
 ## Installation
-
 1. Clone this repository
 2. Install required system dependencies:
    ```bash
-   sudo apt-get install python3 python3-tk tesseract-ocr imagemagick xdotool ffmpeg
+   sudo apt-get install python3 python3-tk tesseract-ocr imagemagick xdotool ffmpeg python3-venv
    ```
-3. Install Python dependencies:
+3. Create and activate a virtual environment:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+4. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-4. Create a `.env` file based on the example:
+5. Create a `.env` file based on the example:
    ```bash
    cp .env-example .env
    ```
@@ -61,7 +65,6 @@ This project provides a complete pipeline with intuitive GUI applications for:
    MODEL="anthropic/claude-3.7-sonnet"
    API_URL="https://openrouter.ai/api/v1/chat/completions"
    ```
-
 **Note**: The `kokoro` package provides the TTS engine, while `ffmpeg` includes both FFmpeg and FFprobe for audio 
 processing and media analysis. ImageMagick provides the `import` command used for screenshot capture.
 

@@ -15,6 +15,9 @@ from pathlib import Path
 from PIL import Image, ImageTk
 from bookextract import BookIntermediate, BookConverter, RichTextRenderer
 
+from pygments import highlight
+from pygments.lexers import JsonLexer
+from pygments.formatters import HtmlFormatter
 
 class RenderBookGUI:
     def __init__(self, root):
@@ -116,14 +119,19 @@ class RenderBookGUI:
         ttk.Button(json_toolbar, text="Validate", command=self.validate_json).pack(side=tk.LEFT, padx=(0, 2))
         
         # JSON text editor
-        self.json_editor = scrolledtext.ScrolledText(
+        self.json_editor = tk.Text(
             left_frame,
             wrap=tk.NONE,
             font=("Consolas", 10),
             undo=True,
-            maxundo=50
+            maxundo=50,
+            background="white",
+            foreground="black"
         )
         self.json_editor.grid(row=1, column=0, sticky="nsew")
+
+        # Configure tags for syntax highlighting
+        self.init_syntax_highlighting()
         
         # Right panel - Rich Text Preview
         right_frame = ttk.LabelFrame(main_frame, text="Rich Text Preview", padding="5")
@@ -194,6 +202,58 @@ class RenderBookGUI:
         self.log_console.insert(tk.END, f"[{timestamp}] {level}: {message}\n")
         self.log_console.see(tk.END)
         self.log_console.config(state=tk.DISABLED)
+
+    def init_syntax_highlighting(self):
+        """Initialize syntax highlighting for the JSON editor."""
+        self.json_editor.tag_configure("Token.Keyword", foreground="#007020")
+        self.json_editor.tag_configure("Token.Keyword.Constant", foreground="#007020")
+        self.json_editor.tag_configure("Token.Name.Tag", foreground="#007020")
+        self.json_editor.tag_configure("Token.Literal.String", foreground="#BA2121")
+        self.json_editor.tag_configure("Token.Literal.String.Double", foreground="#BA2121")
+        self.json_editor.tag_configure("Token.Literal.Number", foreground="#6897BB")
+        self.json_editor.tag_configure("Token.Punctuation", foreground="#000000")
+        self.json_editor.tag_configure("Token.Name.Builtin", foreground="#008080")
+        self.json_editor.tag_configure("Token.Name.Function", foreground="#0000FF")
+        self.json_editor.tag_configure("Token.Name.Class", foreground="#0000FF")
+        self.json_editor.tag_configure("Token.Name.Exception", foreground="#D2413A")
+        self.json_editor.tag_configure("Token.Comment", foreground="#BBBBBB")
+
+    def highlight_json(self, json_text):
+        """Highlight the JSON code in the editor."""
+        self.json_editor.tag_remove("Token.Keyword", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Keyword.Constant", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Name.Tag", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Literal.String", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Literal.String.Double", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Literal.Number", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Punctuation", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Name.Builtin", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Name.Function", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Name.Class", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Name.Exception", "1.0", tk.END)
+        self.json_editor.tag_remove("Token.Comment", "1.0", tk.END)
+
+        lexer = JsonLexer()
+        formatter = HtmlFormatter()
+        html = highlight(json_text, lexer, formatter)
+
+        start = "1.0"
+        for line in html.splitlines():
+            if line.strip():
+                parts = line.split("</span>")
+                for part in parts:
+                    if "<span" in part:
+                        tag = part.split("<span ")[1].split(">")[0]
+                        text = part.split(">")[1]
+                        self.json_editor.insert(start, text)
+                        end = f"{start}+{len(text)}c"
+                        self.json_editor.tag_add(tag, start, end)
+                        start = end
+                    else:
+                        self.json_editor.insert(start, part)
+                        end = f"{start}+{len(part)}c"
+                        start = end
+
         self.root.update_idletasks()
         
     def clear_log(self):
@@ -236,6 +296,7 @@ class RenderBookGUI:
         self.current_json_data = default_json
         self.log_message("Created new JSON document")
         self.refresh_preview()
+        self.highlight_json(self.json_editor.get("1.0", tk.END))
         
     def open_json(self):
         """Open a JSON file."""
@@ -259,6 +320,7 @@ class RenderBookGUI:
                 self.current_json_data = data
                 self.log_message(f"Opened JSON file: {file_path}")
                 self.refresh_preview()
+                self.highlight_json(self.json_editor.get("1.0", tk.END))
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to open JSON file:\n{str(e)}")
@@ -482,6 +544,7 @@ class RenderBookGUI:
                 # All required sections present
                 messagebox.showinfo("Validation", "JSON is valid! All required sections are present.")
                 self.log_message("JSON validation successful - all required sections present")
+            self.highlight_json(self.json_editor.get("1.0", tk.END))
                 
         except json.JSONDecodeError as e:
             messagebox.showerror("JSON Error", f"Invalid JSON format:\n{str(e)}")

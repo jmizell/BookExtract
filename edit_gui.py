@@ -207,7 +207,7 @@ class RenderBookGUI:
         self.completions = [
             '"type"', '"content"', '"image"', '"author"', '"title"', 
             '"chapter_header"', '"paragraph"', '"cover"', '"page_break"',
-            '"true"', '"false"', '"null"'
+            '"true"', '"false"', '"null"', '"source"',
         ]
         self.completion_start = None
         

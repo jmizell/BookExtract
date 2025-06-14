@@ -14,6 +14,7 @@ from .intermediate_to_m4b import (
     process_legacy_format,
     process_intermediate_file_object,
 )
+from .m4b_generator import M4bGenerator, M4bConfig
 from .ocr_processor import OCRProcessor
 from .image_processor import ImageProcessor
 from .epub_generator import EpubGenerator
@@ -26,6 +27,8 @@ __all__ = [
     'BookMetadata',
     'Chapter',
     'ContentSection',
+    'M4bGenerator',
+    'M4bConfig',
     'OCRProcessor',
     'ImageProcessor',
     'create_text_files_from_intermediate',

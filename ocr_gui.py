@@ -646,19 +646,6 @@ class OCRGUI:
         except FileNotFoundError:
             status_lines.append("✗ Tesseract: Not installed")
             
-        # Check Python packages
-        try:
-            import requests
-            status_lines.append("✓ requests: Available")
-        except ImportError:
-            status_lines.append("✗ requests: Not installed")
-            
-        try:
-            from dotenv import load_dotenv
-            status_lines.append("✓ python-dotenv: Available")
-        except ImportError:
-            status_lines.append("✗ python-dotenv: Not installed")
-            
         messagebox.showinfo("Dependency Status", "\n".join(status_lines))
         
     def show_about(self):

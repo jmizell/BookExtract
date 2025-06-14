@@ -59,9 +59,6 @@ class RenderEpubGUI:
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Refresh Preview", command=self.refresh_preview, accelerator="F5")
-        view_menu.add_command(label="Open EPUB in Browser", command=self.open_epub_in_browser, accelerator="Ctrl+B")
-        view_menu.add_separator()
         view_menu.add_command(label="Clear Log", command=self.clear_log)
         
         # Help menu
@@ -73,9 +70,7 @@ class RenderEpubGUI:
         # Bind keyboard shortcuts
         self.root.bind('<Control-o>', lambda e: self.open_intermediate())
         self.root.bind('<Control-e>', lambda e: self.export_epub())
-        self.root.bind('<Control-b>', lambda e: self.open_epub_in_browser())
         self.root.bind('<Control-q>', lambda e: self.root.quit())
-        self.root.bind('<F5>', lambda e: self.refresh_preview())
         
     def setup_ui(self):
         """Create and layout the user interface."""
@@ -154,13 +149,6 @@ class RenderEpubGUI:
         right_frame.grid(row=0, column=1, sticky="nsew", padx=(2, 0))
         right_frame.columnconfigure(0, weight=1)
         right_frame.rowconfigure(1, weight=1)
-        
-        # Preview toolbar
-        preview_toolbar = ttk.Frame(right_frame)
-        preview_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
-        
-        ttk.Button(preview_toolbar, text="Refresh", command=self.refresh_preview).pack(side=tk.LEFT, padx=(0, 2))
-        ttk.Button(preview_toolbar, text="Open in Browser", command=self.open_epub_in_browser).pack(side=tk.LEFT, padx=(0, 2))
         
         # Preview area
         self.preview_area = scrolledtext.ScrolledText(
@@ -615,22 +603,7 @@ class RenderEpubGUI:
         epub.write_epub(output_path, book, {})
         self.log_message(f"EPUB file created: {output_path}")
         
-    def open_epub_in_browser(self):
-        """Open the current EPUB in the default browser."""
-        if not self.temp_epub_path or not os.path.exists(self.temp_epub_path):
-            self.refresh_preview()
-            if not self.temp_epub_path:
-                messagebox.showwarning("Warning", "No EPUB preview available")
-                return
-                
-        try:
-            # For now, just show a message about the EPUB location
-            messagebox.showinfo("EPUB Location", f"EPUB preview file:\n{self.temp_epub_path}\n\nYou can open this file with an EPUB reader.")
-            self.log_message(f"EPUB preview available at: {self.temp_epub_path}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to open EPUB:\n{str(e)}")
-            self.log_message(f"Error opening EPUB: {str(e)}", "ERROR")
-            
+
     def load_default_intermediate(self):
         """Load default intermediate file if available."""
         default_paths = [

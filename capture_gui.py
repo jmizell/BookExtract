@@ -8,11 +8,10 @@ of book pages with automated navigation between pages.
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-import subprocess
 import threading
 import time
-import os
 from pathlib import Path
+from book_capture import BookCapture
 
 
 class CaptureGUI:
@@ -22,10 +21,16 @@ class CaptureGUI:
         self.root.geometry("500x400")
         self.root.resizable(True, True)
         
+        # Initialize capture handler
+        self.capture_handler = BookCapture()
+        self.capture_handler.set_callbacks(
+            progress_callback=self.update_progress,
+            log_callback=self.log_message,
+            completion_callback=self.on_capture_complete
+        )
+        
         # State variables
-        self.is_capturing = False
         self.capture_thread = None
-        self.current_page = 0
         
         # Default values
         self.default_save_location = str(Path.cwd() / "images")
@@ -185,161 +190,80 @@ class CaptureGUI:
         self.status_text.see(tk.END)
         self.root.update_idletasks()
         
-    def validate_inputs(self):
-        """Validate user inputs before starting capture."""
-        try:
-            pages = int(self.pages_var.get())
-            if pages <= 0:
-                raise ValueError("Number of pages must be positive")
-        except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter a valid number of pages (positive integer)")
-            return False
-            
-        try:
-            delay = float(self.delay_var.get())
-            if delay < 0:
-                raise ValueError("Delay must be non-negative")
-        except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter a valid delay (non-negative number)")
-            return False
-            
-        save_location = self.location_var.get().strip()
-        if not save_location:
-            messagebox.showerror("Invalid Input", "Please specify a save location")
-            return False
-            
-        # Validate coordinates
-        try:
-            int(self.next_x_var.get())
-            int(self.next_y_var.get())
-            int(self.safe_x_var.get())
-            int(self.safe_y_var.get())
-        except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter valid coordinates (integers)")
-            return False
-            
-        return True
-        
-    def check_dependencies(self):
-        """Check if required system tools are available."""
-        required_tools = ['import', 'xdotool']
-        missing_tools = []
-        
-        for tool in required_tools:
-            try:
-                subprocess.run([tool, '--version'], capture_output=True, check=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                missing_tools.append(tool)
-                
-        if missing_tools:
-            messagebox.showerror(
-                "Missing Dependencies", 
-                f"The following required tools are not installed:\n{', '.join(missing_tools)}\n\n"
-                "Please install them using:\nsudo apt-get install imagemagick xdotool"
-            )
-            return False
-            
-        return True
+    def get_capture_params(self):
+        """Get capture parameters from GUI inputs."""
+        return {
+            'pages': self.pages_var.get(),
+            'delay': self.delay_var.get(),
+            'save_location': self.location_var.get(),
+            'next_x': self.next_x_var.get(),
+            'next_y': self.next_y_var.get(),
+            'safe_x': self.safe_x_var.get(),
+            'safe_y': self.safe_y_var.get()
+        }
         
     def start_capture(self):
         """Start the capture process."""
-        if not self.validate_inputs() or not self.check_dependencies():
+        # Get parameters from GUI
+        params = self.get_capture_params()
+        
+        # Validate parameters using capture handler
+        valid, error = self.capture_handler.validate_capture_params(params)
+        if not valid:
+            messagebox.showerror("Invalid Input", error)
             return
             
-        # Create save directory if it doesn't exist
-        save_location = Path(self.location_var.get())
-        try:
-            save_location.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            messagebox.showerror("Directory Error", f"Could not create directory:\n{e}")
+        # Check dependencies
+        deps_ok, missing = self.capture_handler.check_dependencies()
+        if not deps_ok:
+            messagebox.showerror(
+                "Missing Dependencies", 
+                f"The following required tools are not installed:\n{', '.join(missing)}\n\n"
+                "Please install them using:\nsudo apt-get install imagemagick xdotool"
+            )
             return
             
         # Update UI state
-        self.is_capturing = True
-        self.current_page = 0
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
         
         # Setup progress bar
-        total_pages = int(self.pages_var.get())
+        total_pages = int(params['pages'])
         self.progress_bar.config(maximum=total_pages, value=0)
         
         # Start capture in separate thread
-        self.capture_thread = threading.Thread(target=self.capture_worker, daemon=True)
+        self.capture_thread = threading.Thread(target=self.capture_worker, args=(params,), daemon=True)
         self.capture_thread.start()
         
-        self.log_message(f"Starting capture of {total_pages} pages...")
-        
-    def capture_worker(self):
+    def capture_worker(self, params):
         """Worker thread for the capture process."""
-        try:
-            total_pages = int(self.pages_var.get())
-            delay = float(self.delay_var.get())
-            save_location = Path(self.location_var.get())
-            
-            next_x = int(self.next_x_var.get())
-            next_y = int(self.next_y_var.get())
-            safe_x = int(self.safe_x_var.get())
-            safe_y = int(self.safe_y_var.get())
-            
-            for i in range(total_pages):
-                if not self.is_capturing:
-                    break
-                    
-                self.current_page = i
-                page_num = f"{i:03d}"
-                filename = save_location / f"page{page_num}.png"
-                
-                # Update progress
-                self.root.after(0, self.update_progress, i, f"Capturing page {i+1}/{total_pages}")
-                
-                try:
-                    # Take screenshot
-                    subprocess.run(['import', '-window', 'root', str(filename)], 
-                                 check=True, capture_output=True)
-                    
-                    # Move mouse to next button and click
-                    subprocess.run(['xdotool', 'mousemove', str(next_x), str(next_y)], 
-                                 check=True, capture_output=True)
-                    subprocess.run(['xdotool', 'click', '1'], 
-                                 check=True, capture_output=True)
-                    
-                    # Move mouse to safe area and click
-                    subprocess.run(['xdotool', 'mousemove', str(safe_x), str(safe_y)], 
-                                 check=True, capture_output=True)
-                    subprocess.run(['xdotool', 'click', '1'], 
-                                 check=True, capture_output=True)
-                    
-                    # Wait before next capture
-                    time.sleep(delay)
-                    
-                except subprocess.CalledProcessError as e:
-                    self.root.after(0, self.log_message, f"Error capturing page {i+1}: {e}")
-                    break
-                    
-            # Capture completed or cancelled
-            if self.is_capturing:
-                self.root.after(0, self.capture_completed, total_pages)
-            else:
-                self.root.after(0, self.capture_cancelled)
-                
-        except Exception as e:
-            self.root.after(0, self.log_message, f"Unexpected error: {e}")
-            self.root.after(0, self.capture_cancelled)
+        self.capture_handler.start_capture(params)
             
     def update_progress(self, current, status):
-        """Update progress bar and status."""
+        """Update progress bar and status (called from capture handler)."""
+        # Use root.after to ensure thread safety
+        self.root.after(0, self._update_progress_ui, current, status)
+        
+    def _update_progress_ui(self, current, status):
+        """Internal method to update progress UI elements."""
         self.progress_bar.config(value=current)
         self.progress_var.set(status)
         
-    def capture_completed(self, total_pages):
-        """Handle successful completion of capture."""
-        self.is_capturing = False
+    def on_capture_complete(self, success, message):
+        """Handle capture completion (called from capture handler)."""
+        # Use root.after to ensure thread safety
+        self.root.after(0, self._handle_completion_ui, success, message)
+        
+    def _handle_completion_ui(self, success, message):
+        """Internal method to handle completion UI updates."""
         self.start_button.config(state=tk.NORMAL)
         self.cancel_button.config(state=tk.DISABLED)
-        self.progress_var.set(f"Completed! Captured {total_pages} pages")
-        self.progress_bar.config(value=total_pages)
-        self.log_message(f"Capture completed successfully! {total_pages} pages saved to {self.location_var.get()}")
+        self.progress_var.set(message)
+        
+        if success:
+            # Set progress bar to maximum
+            total_pages = int(self.pages_var.get())
+            self.progress_bar.config(value=total_pages)
         
     def test_coordinates(self):
         """Test the mouse coordinates by moving to each position."""
@@ -352,43 +276,18 @@ class CaptureGUI:
             messagebox.showerror("Invalid Input", "Please enter valid coordinates (integers)")
             return
             
-        if not self.check_dependencies():
-            return
-            
-        self.log_message("Testing coordinates...")
+        # Use capture handler to test coordinates
+        success, message = self.capture_handler.test_coordinates(next_x, next_y, safe_x, safe_y)
         
-        try:
-            # Move to next button position
-            self.log_message(f"Moving to next button position: ({next_x}, {next_y})")
-            subprocess.run(['xdotool', 'mousemove', str(next_x), str(next_y)], 
-                         check=True, capture_output=True)
-            time.sleep(1)
-            
-            # Move to safe area
-            self.log_message(f"Moving to safe area: ({safe_x}, {safe_y})")
-            subprocess.run(['xdotool', 'mousemove', str(safe_x), str(safe_y)], 
-                         check=True, capture_output=True)
-            
-            self.log_message("Coordinate test completed successfully!")
+        if success:
             messagebox.showinfo("Test Complete", 
                               "Mouse moved to both positions. Check if the positions are correct.")
-            
-        except subprocess.CalledProcessError as e:
-            self.log_message(f"Error testing coordinates: {e}")
-            messagebox.showerror("Test Failed", f"Could not move mouse: {e}")
+        else:
+            messagebox.showerror("Test Failed", message)
     
     def cancel_capture(self):
         """Cancel the ongoing capture process."""
-        if self.is_capturing:
-            self.is_capturing = False
-            self.log_message("Cancelling capture...")
-            
-    def capture_cancelled(self):
-        """Handle cancelled capture."""
-        self.start_button.config(state=tk.NORMAL)
-        self.cancel_button.config(state=tk.DISABLED)
-        self.progress_var.set(f"Cancelled after {self.current_page} pages")
-        self.log_message(f"Capture cancelled by user after {self.current_page} pages")
+        self.capture_handler.cancel_capture()
     
     def reset_defaults(self):
         """Reset all settings to default values."""
@@ -403,19 +302,15 @@ class CaptureGUI:
         
     def show_dependency_status(self):
         """Show the status of required dependencies."""
-        required_tools = [
-            ('ImageMagick (import)', 'import'),
-            ('xdotool', 'xdotool')
-        ]
+        status_dict = self.capture_handler.get_dependency_status()
         
         status_lines = ["Dependency Status:\n"]
         all_good = True
         
-        for name, command in required_tools:
-            try:
-                subprocess.run([command, '--version'], capture_output=True, check=True)
+        for name, available in status_dict.items():
+            if available:
                 status_lines.append(f"✓ {name}: Available")
-            except (subprocess.CalledProcessError, FileNotFoundError):
+            else:
                 status_lines.append(f"✗ {name}: Not found")
                 all_good = False
         
@@ -493,9 +388,9 @@ def main():
     
     # Handle window closing
     def on_closing():
-        if app.is_capturing:
+        if app.capture_handler.is_capturing:
             if messagebox.askokcancel("Quit", "Capture is in progress. Do you want to quit?"):
-                app.is_capturing = False
+                app.capture_handler.cancel_capture()
                 root.destroy()
         else:
             root.destroy()

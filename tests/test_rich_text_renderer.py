@@ -4,6 +4,12 @@ Test script for the RichTextRenderer functionality
 """
 
 import tkinter as tk
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from bookextract import RichTextRenderer
 
 def test_rich_text_renderer():

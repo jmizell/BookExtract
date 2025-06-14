@@ -5,6 +5,12 @@ Test script for the modular EpubGenerator class.
 
 import tempfile
 import os
+import sys
+from pathlib import Path
+
+# Add parent directory to path to import modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from render_epub import EpubGenerator
 
 def test_epub_generation():

@@ -9,7 +9,12 @@ that the intermediate representation works correctly.
 import json
 import tempfile
 import os
+import sys
 from pathlib import Path
+
+# Add parent directory to path to import modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from bookextract import BookIntermediate, BookConverter, BookMetadata, Chapter, ContentSection
 
 

@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 import glob
-from ocr_processor import OCRProcessor
+from bookextract import OCRProcessor
 
 
 class OCRGUI:

@@ -11,7 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 import threading
 import time
 from pathlib import Path
-from book_capture import BookCapture
+from bookextract import BookCapture
 
 
 class CaptureGUI:

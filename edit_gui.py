@@ -13,6 +13,8 @@ import os
 import threading
 from pathlib import Path
 from PIL import Image, ImageTk
+from pygments.lexers import JsonLexer
+from pygments.token import Token
 from bookextract import BookIntermediate, BookConverter, RichTextRenderer
 
 
@@ -115,7 +117,7 @@ class RenderBookGUI:
         ttk.Button(json_toolbar, text="Format", command=self.format_json).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(json_toolbar, text="Validate", command=self.validate_json).pack(side=tk.LEFT, padx=(0, 2))
         
-        # JSON text editor
+        # JSON text editor with syntax highlighting
         self.json_editor = scrolledtext.ScrolledText(
             left_frame,
             wrap=tk.NONE,
@@ -123,6 +125,79 @@ class RenderBookGUI:
             undo=True,
             maxundo=50
         )
+        
+        # Configure syntax highlighting
+        from pygments.lexers import JsonLexer
+        from pygments.style import Style
+        from pygments.token import Token
+        from pygments import highlight
+        from pygments.formatters import get_formatter_by_name
+        
+        class JsonEditorStyle(Style):
+            styles = {
+                Token.String:  '#FF0000',
+                Token.Number:  '#008800',
+                Token.Keyword: '#0000FF',
+                Token.Name:    '#000000',
+            }
+        
+        self.json_lexer = JsonLexer()
+        self.json_editor.tag_config('Token.String', foreground='#FF0000')
+        self.json_editor.tag_config('Token.Number', foreground='#008800')
+        self.json_editor.tag_config('Token.Keyword', foreground='#0000FF')
+        self.json_editor.tag_config('Token.Name', foreground='#000000')
+        
+        def highlight_json(event=None):
+            code = self.json_editor.get(1.0, tk.END)
+            self.json_editor.mark_set(tk.INSERT, 1.0)
+            self.json_editor.mark_set(tk.END, tk.END)
+            self.json_editor.tag_remove('Token.String', 1.0, tk.END)
+            self.json_editor.tag_remove('Token.Number', 1.0, tk.END)
+            self.json_editor.tag_remove('Token.Keyword', 1.0, tk.END)
+            self.json_editor.tag_remove('Token.Name', 1.0, tk.END)
+            
+            try:
+                for token, text in self.json_lexer.get_tokens(code):
+                    start = self.json_editor.index(tk.INSERT)
+                    self.json_editor.insert(tk.END, text)
+                    end = self.json_editor.index(tk.INSERT)
+                    self.json_editor.tag_add(str(token), start, end)
+            except:
+                pass
+        
+        self.json_editor.bind('&lt;KeyRelease&gt;', highlight_json)
+        
+        # Configure tab completion
+        self.completions = ['"type"', '"content"', '"image"', '"author"', '"title"', '"chapter_header"', '"paragraph"']
+        self.completion_start = None
+        
+        def on_tab(event):
+            # Get current position and line
+            pos = self.json_editor.index(tk.INSERT)
+            line = self.json_editor.get('insert linestart', 'insert lineend')
+            
+            # Find word start
+            i = int(pos.split('.')[1]) - 1
+            while i >= 0 and (line[i].isalpha() or line[i] == '"'):
+                i -= 1
+            word_start = i + 1
+            
+            # Get partial word
+            partial = line[word_start:int(pos.split('.')[1])]
+            
+            # Find matching completions
+            matches = [c for c in self.completions if c.startswith(partial)]
+            
+            if matches:
+                # Insert first match
+                completion = matches[0][len(partial):]
+                self.json_editor.insert(tk.INSERT, completion)
+                if len(matches) > 1:
+                    self.log_message(f"Other completions: {', '.join(matches[1:])}")
+            
+            return "break"  # prevent default tab behavior
+        
+        self.json_editor.bind('&lt;Tab&gt;', on_tab)
         self.json_editor.grid(row=1, column=0, sticky="nsew")
         
         # Right panel - Rich Text Preview

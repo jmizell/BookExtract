@@ -12,6 +12,7 @@ import json
 import os
 import threading
 from pathlib import Path
+from PIL import Image, ImageTk
 from book_intermediate import BookIntermediate, BookConverter
 
 
@@ -27,6 +28,9 @@ class RenderBookGUI:
         self.current_json_data = None
         self.is_rendering = False
         self.render_thread = None
+        
+        # Image cache to prevent memory leaks
+        self.image_cache = {}
         
         # Default values
         self.default_input_folder = str(Path.cwd() / "out")
@@ -253,6 +257,63 @@ class RenderBookGUI:
                                       justify="center",
                                       spacing1=15, spacing3=15)
         
+    def clear_image_cache(self):
+        """Clear the image cache to free memory."""
+        self.image_cache.clear()
+        
+    def load_and_resize_image(self, image_path, max_width=400, max_height=300, is_cover=False):
+        """Load and resize an image for display in the preview.
+        
+        Args:
+            image_path: Path to the image file
+            max_width: Maximum width for the resized image
+            max_height: Maximum height for the resized image
+            is_cover: If True, use larger dimensions for cover images
+            
+        Returns:
+            PhotoImage object or None if loading fails
+        """
+        try:
+            # Use larger dimensions for cover images
+            if is_cover:
+                max_width = 300
+                max_height = 400
+            
+            # Check cache first
+            cache_key = f"{image_path}_{max_width}_{max_height}_{is_cover}"
+            if cache_key in self.image_cache:
+                return self.image_cache[cache_key]
+            
+            # Load and process image
+            with Image.open(image_path) as img:
+                # Convert to RGB if necessary (handles RGBA, P mode, etc.)
+                if img.mode not in ('RGB', 'L'):
+                    img = img.convert('RGB')
+                
+                # Calculate resize dimensions maintaining aspect ratio
+                img_width, img_height = img.size
+                width_ratio = max_width / img_width
+                height_ratio = max_height / img_height
+                ratio = min(width_ratio, height_ratio)
+                
+                new_width = int(img_width * ratio)
+                new_height = int(img_height * ratio)
+                
+                # Resize image
+                img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(img_resized)
+                
+                # Cache the result
+                self.image_cache[cache_key] = photo
+                
+                return photo
+                
+        except Exception as e:
+            self.log_message(f"Failed to load image {image_path}: {str(e)}", "WARNING")
+            return None
+    
     def log_message(self, message, level="INFO"):
         """Add a message to the log console."""
         self.log_console.config(state=tk.NORMAL)
@@ -558,6 +619,9 @@ class RenderBookGUI:
         """Refresh the rich text preview."""
         if self.is_rendering:
             return
+        
+        # Clear image cache to free memory and reload images
+        self.clear_image_cache()
             
         self.is_rendering = True
         self.render_thread = threading.Thread(target=self._generate_preview)
@@ -618,7 +682,12 @@ class RenderBookGUI:
                         full_image_path = os.path.join(self.default_input_folder, image_path)
                     
                     if os.path.exists(full_image_path):
-                        content_parts.append(('cover', f"[COVER IMAGE: {image_path}]"))
+                        # Try to load the actual image
+                        photo = self.load_and_resize_image(full_image_path, is_cover=True)
+                        if photo:
+                            content_parts.append(('cover_image', photo))
+                        else:
+                            content_parts.append(('cover', f"[COVER IMAGE: {image_path} - LOAD FAILED]"))
                     else:
                         content_parts.append(('cover', f"[COVER IMAGE: {image_path} - NOT FOUND]"))
                 else:
@@ -657,7 +726,12 @@ class RenderBookGUI:
                         full_image_path = os.path.join(self.default_input_folder, image_path)
                     
                     if os.path.exists(full_image_path):
-                        content_parts.append(('image', f"[IMAGE: {image_path}]"))
+                        # Try to load the actual image
+                        photo = self.load_and_resize_image(full_image_path, is_cover=False)
+                        if photo:
+                            content_parts.append(('content_image', photo))
+                        else:
+                            content_parts.append(('image', f"[IMAGE: {image_path} - LOAD FAILED]"))
                     else:
                         content_parts.append(('image', f"[IMAGE: {image_path} - NOT FOUND]"))
                 else:
@@ -677,18 +751,31 @@ class RenderBookGUI:
         return content_parts
             
     def _update_preview_area(self, content_parts):
-        """Update the preview area with rich text content."""
+        """Update the preview area with rich text content and images."""
         self.preview_area.config(state=tk.NORMAL)
         self.preview_area.delete(1.0, tk.END)
         
-        for tag, text in content_parts:
-            if text:  # Only insert non-empty text
-                start_pos = self.preview_area.index(tk.INSERT)
-                self.preview_area.insert(tk.INSERT, text + '\n')
-                end_pos = self.preview_area.index(tk.INSERT)
-                
-                # Apply the tag to the inserted text
-                self.preview_area.tag_add(tag, start_pos, end_pos)
+        for tag, content in content_parts:
+            if tag in ('cover_image', 'content_image'):
+                # Handle image content
+                if content:  # content is a PhotoImage object
+                    # Insert a newline before the image for spacing
+                    self.preview_area.insert(tk.INSERT, '\n')
+                    
+                    # Insert the image
+                    self.preview_area.image_create(tk.INSERT, image=content)
+                    
+                    # Insert a newline after the image
+                    self.preview_area.insert(tk.INSERT, '\n')
+            else:
+                # Handle text content
+                if content:  # Only insert non-empty text
+                    start_pos = self.preview_area.index(tk.INSERT)
+                    self.preview_area.insert(tk.INSERT, content + '\n')
+                    end_pos = self.preview_area.index(tk.INSERT)
+                    
+                    # Apply the tag to the inserted text
+                    self.preview_area.tag_add(tag, start_pos, end_pos)
         
         self.preview_area.config(state=tk.DISABLED)
         self.log_message("Rich text preview updated successfully")
@@ -775,7 +862,8 @@ Rich Text Preview:
 The right panel shows your content formatted as rich text with:
 • Styled headings and titles
 • Proper spacing and indentation
-• Image placeholders with file status
+• Actual image rendering (PNG, JPEG, GIF, BMP supported)
+• Image placeholders for missing or invalid images
 • Visual separation between sections
 
 Auto-Stub Feature:

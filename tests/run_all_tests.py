@@ -84,6 +84,7 @@ def main():
         os.path.join(script_dir, 'test_m4b_generator.py'),
         os.path.join(script_dir, 'test_book_capture.py'),
         os.path.join(script_dir, 'test_epub_generator_extended.py'),
+        os.path.join(script_dir, 'test_unified_gui.py'),
     ]
     
     # Check that all test files exist

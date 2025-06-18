@@ -19,6 +19,12 @@ class BookCapture:
         self.current_page = 0
         self.total_pages = 0
         
+        # Crop parameters
+        self.crop_x = 0
+        self.crop_y = 0
+        self.crop_width = 0
+        self.crop_height = 0
+        
         # Callback functions for progress updates
         self.progress_callback: Optional[Callable[[int, str], None]] = None
         self.log_callback: Optional[Callable[[str], None]] = None
@@ -53,6 +59,48 @@ class BookCapture:
         """Internal completion notification method."""
         if self.completion_callback:
             self.completion_callback(success, message)
+            
+    def _crop_image(self, input_path: Path, output_path: Path) -> bool:
+        """Crop an image using the current crop parameters.
+        
+        Args:
+            input_path: Path to input image
+            output_path: Path to save cropped image
+            
+        Returns:
+            True if cropping succeeded, False otherwise
+        """
+        try:
+            from PIL import Image
+            with Image.open(input_path) as img:
+                # Define crop box (left, top, right, bottom)
+                crop_box = (
+                    self.crop_x,
+                    self.crop_y,
+                    self.crop_x + self.crop_width,
+                    self.crop_y + self.crop_height
+                )
+                
+                # Ensure crop box is within image bounds
+                img_width, img_height = img.size
+                crop_box = (
+                    max(0, min(crop_box[0], img_width)),
+                    max(0, min(crop_box[1], img_height)),
+                    max(0, min(crop_box[2], img_width)),
+                    max(0, min(crop_box[3], img_height))
+                )
+                
+                # Crop and save the image
+                cropped_img = img.crop(crop_box)
+                cropped_img.save(output_path)
+                return True
+                
+        except ImportError:
+            self._log("Pillow (PIL) not available - cannot perform cropping")
+            return False
+        except Exception as e:
+            self._log(f"Error cropping image: {e}")
+            return False
     
     def check_dependencies(self) -> tuple[bool, list[str]]:
         """Check if required system tools are available.
@@ -92,6 +140,20 @@ class BookCapture:
                 
         return status
     
+    def set_crop_params(self, x: int, y: int, width: int, height: int):
+        """Set crop parameters.
+        
+        Args:
+            x: Left coordinate of crop area
+            y: Top coordinate of crop area
+            width: Width of crop area
+            height: Height of crop area
+        """
+        self.crop_x = x
+        self.crop_y = y
+        self.crop_width = width
+        self.crop_height = height
+        
     def validate_capture_params(self, params: Dict[str, Any]) -> tuple[bool, str]:
         """Validate capture parameters.
         
@@ -202,38 +264,48 @@ class BookCapture:
         self.total_pages = int(params['pages'])
         
         # Start capture process
-        self._capture_pages(params)
+        self.capture_and_crop_pages(params)
         return True
     
-    def _capture_pages(self, params: Dict[str, Any]):
-        """Internal method to capture pages."""
+    def capture_and_crop_pages(self, params: Dict[str, Any]):
+        """Internal method to capture and crop pages."""
         try:
             total_pages = int(params['pages'])
             delay = float(params['delay'])
             save_location = Path(params['save_location'])
+            initial_seq = int(params.get('initial_seq', 0))
             
             next_x = int(params['next_x'])
             next_y = int(params['next_y'])
             safe_x = int(params['safe_x'])
             safe_y = int(params['safe_y'])
             
-            self._log(f"Starting capture of {total_pages} pages...")
+            self._log(f"Starting unified capture and crop of {total_pages} pages...")
             
             for i in range(total_pages):
                 if not self.is_capturing:
                     break
                     
                 self.current_page = i
-                page_num = f"{i:03d}"
-                filename = save_location / f"page{page_num}.png"
+                page_num = f"{i + initial_seq:03d}"
+                temp_filename = save_location / f"temp_page{page_num}.png"
+                final_filename = save_location / f"page{page_num}.png"
                 
                 # Update progress
-                self._update_progress(i, f"Capturing page {i+1}/{total_pages}")
+                self._update_progress(i, f"Capturing and cropping page {i+1}/{total_pages}")
                 
                 try:
                     # Take screenshot
-                    subprocess.run(['import', '-window', 'root', str(filename)], 
+                    subprocess.run(['import', '-window', 'root', str(temp_filename)], 
                                  check=True, capture_output=True)
+                    
+                    # Crop the image if parameters are set
+                    if self.crop_width > 0 and self.crop_height > 0:
+                        if not self._crop_image(temp_filename, final_filename):
+                            raise RuntimeError("Failed to crop image")
+                        temp_filename.unlink()
+                    else:
+                        temp_filename.rename(final_filename)
                     
                     # Move mouse to next button and click
                     subprocess.run(['xdotool', 'mousemove', str(next_x), str(next_y)], 
@@ -254,11 +326,15 @@ class BookCapture:
                     self._log(f"Error capturing page {i+1}: {e}")
                     self._notify_completion(False, f"Capture failed at page {i+1}: {e}")
                     return
+                except Exception as e:
+                    self._log(f"Error processing page {i+1}: {e}")
+                    self._notify_completion(False, f"Processing failed at page {i+1}: {e}")
+                    return
                     
             # Capture completed or cancelled
             if self.is_capturing:
-                self._log(f"Capture completed successfully! {total_pages} pages saved to {save_location}")
-                self._notify_completion(True, f"Completed! Captured {total_pages} pages")
+                self._log(f"Unified capture and crop completed successfully! {total_pages} pages saved to {save_location}")
+                self._notify_completion(True, f"Completed! Captured and cropped {total_pages} pages")
             else:
                 self._log(f"Capture cancelled by user after {self.current_page} pages")
                 self._notify_completion(False, f"Cancelled after {self.current_page} pages")

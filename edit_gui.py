@@ -698,25 +698,13 @@ class RenderBookGUI:
                 return
                 
             try:
-                # Get current content
                 content = self.json_editor.get("1.0", tk.END)
-                
-                # Compile regex with flags
                 flags = 0 if case_sensitive.get() else re.IGNORECASE
                 regex = re.compile(pattern, flags)
-                
-                # Perform replacement
                 new_content, count = regex.subn(replacement, content)
-                
-                # Update editor
                 self.json_editor.delete("1.0", tk.END)
                 self.json_editor.insert("1.0", new_content)
-                
-                # Show results
                 status_label.config(text=f"Replaced {count} occurrences")
-                
-                # Highlight remaining matches
-                self.search_text()
                 
             except re.error as e:
                 status_label.config(text=f"Invalid regex: {str(e)}")

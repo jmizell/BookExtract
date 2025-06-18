@@ -556,10 +556,14 @@ class RenderBookGUI:
             self.log_message(f"Save intermediate error: {str(e)}", "ERROR")
             
     def search_text(self):
-        """Open search dialog and highlight matches using regex patterns."""
+        """Open search dialog with iterative match navigation."""
         search_window = tk.Toplevel(self.root)
         search_window.title("Regex Search")
-        search_window.geometry("400x200")
+        search_window.geometry("400x250")
+        
+        # Instance variables for match tracking
+        self.current_match_index = 0
+        self.match_positions = []
         
         # Search pattern input
         ttk.Label(search_window, text="Regex pattern:").pack(pady=5)
@@ -575,41 +579,89 @@ class RenderBookGUI:
             variable=case_sensitive
         ).pack(pady=5)
         
-        # Status label for errors
+        # Status label
         status_label = ttk.Label(search_window, text="", foreground="red")
         status_label.pack(pady=5)
         
-        def do_search():
+        # Button frame
+        button_frame = ttk.Frame(search_window)
+        button_frame.pack(pady=5)
+        
+        def find_all_matches():
+            """Find and highlight all matches, returning positions."""
             pattern = search_entry.get()
             if not pattern:
-                return
+                return []
                 
             try:
-                # Remove previous highlights
-                self.json_editor.tag_remove("search", "1.0", tk.END)
-                
-                # Get all text
                 content = self.json_editor.get("1.0", tk.END)
-                
-                # Compile regex with flags
                 flags = 0 if case_sensitive.get() else re.IGNORECASE
                 regex = re.compile(pattern, flags)
                 
-                # Find and highlight all matches
-                for match in regex.finditer(content):
+                # Clear previous highlights
+                self.json_editor.tag_remove("search", "1.0", tk.END)
+                self.json_editor.tag_remove("current", "1.0", tk.END)
+                
+                # Find all matches
+                matches = list(regex.finditer(content))
+                positions = []
+                
+                for match in matches:
                     start_pos = f"1.0+{match.start()}c"
                     end_pos = f"1.0+{match.end()}c"
                     self.json_editor.tag_add("search", start_pos, end_pos)
+                    positions.append((start_pos, end_pos))
                 
-                # Configure highlight style
+                # Configure highlight styles
                 self.json_editor.tag_config("search", background="yellow")
-                status_label.config(text=f"Found {len(regex.findall(content))} matches")
+                self.json_editor.tag_config("current", background="orange")
+                
+                return positions
                 
             except re.error as e:
                 status_label.config(text=f"Invalid regex: {str(e)}")
+                return []
         
-        ttk.Button(search_window, text="Search", command=do_search).pack(pady=5)
+        def navigate_match(direction=1):
+            """Navigate to next/previous match with wrap-around."""
+            if not self.match_positions:
+                self.match_positions = find_all_matches()
+                if not self.match_positions:
+                    status_label.config(text="No matches found")
+                    return
+                status_label.config(text=f"Found {len(self.match_positions)} matches")
+            
+            # Clear current highlight
+            if 0 <= self.current_match_index < len(self.match_positions):
+                start, end = self.match_positions[self.current_match_index]
+                self.json_editor.tag_remove("current", start, end)
+            
+            # Update index with wrap-around
+            self.current_match_index = (self.current_match_index + direction) % len(self.match_positions)
+            
+            # Highlight and scroll to current match
+            start, end = self.match_positions[self.current_match_index]
+            self.json_editor.tag_add("current", start, end)
+            self.json_editor.see(start)
+            self.json_editor.focus_set()
+            
+            status_label.config(text=f"Match {self.current_match_index + 1} of {len(self.match_positions)}")
+        
+        def do_search():
+            """Initial search and first match navigation."""
+            self.match_positions = find_all_matches()
+            if self.match_positions:
+                self.current_match_index = -1  # Will wrap to 0 in navigate_match
+                navigate_match(1)
+            else:
+                status_label.config(text="No matches found")
+        
+        # Buttons
+        ttk.Button(button_frame, text="Search", command=do_search).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Next", command=lambda: navigate_match(1)).pack(side=tk.LEFT, padx=5)
+        
         search_window.bind('<Return>', lambda e: do_search())
+        search_window.bind('<Right>', lambda e: navigate_match(1))
 
     def replace_text(self):
         """Open replace dialog and perform regex replacements."""

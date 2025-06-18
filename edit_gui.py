@@ -52,6 +52,7 @@ class RenderBookGUI:
         file_menu.add_command(label="New", command=self.new_json, accelerator="Ctrl+N")
         file_menu.add_command(label="Open JSON...", command=self.open_json, accelerator="Ctrl+O")
         file_menu.add_command(label="Open Intermediate...", command=self.open_intermediate)
+        file_menu.add_command(label="Open EPUB...", command=self.open_epub)
         file_menu.add_separator()
         file_menu.add_command(label="Save JSON", command=self.save_json, accelerator="Ctrl+S")
         file_menu.add_command(label="Save JSON As...", command=self.save_json_as, accelerator="Ctrl+Shift+S")
@@ -113,6 +114,7 @@ class RenderBookGUI:
         json_toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         
         ttk.Button(json_toolbar, text="Open", command=self.open_json).pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Button(json_toolbar, text="Open EPUB", command=self.open_epub).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(json_toolbar, text="Save", command=self.save_json).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(json_toolbar, text="Format", command=self.format_json).pack(side=tk.LEFT, padx=(0, 2))
         ttk.Button(json_toolbar, text="Validate", command=self.validate_json).pack(side=tk.LEFT, padx=(0, 2))
@@ -470,6 +472,47 @@ class RenderBookGUI:
                 messagebox.showerror("Error", f"Failed to open intermediate file:\n{str(e)}")
                 self.log_message(f"Error opening intermediate file: {str(e)}", "ERROR")
     
+    def open_epub(self):
+        """Open an EPUB file and convert it to section array format."""
+        if self.check_unsaved_changes():
+            return
+            
+        file_path = filedialog.askopenfilename(
+            title="Open EPUB File",
+            initialdir=self.default_input_folder,
+            filetypes=[("EPUB files", "*.epub"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                self.log_message(f"Loading EPUB file: {file_path}")
+                
+                # Convert EPUB to intermediate representation
+                intermediate = BookConverter.from_epub_file(
+                    file_path, 
+                    extract_images=True,
+                    output_dir=os.path.dirname(file_path)
+                )
+                
+                # Convert to section array format for editing
+                sections = BookConverter.to_section_array(intermediate)
+                
+                self.json_editor.delete(1.0, tk.END)
+                self.json_editor.insert(1.0, json.dumps(sections, indent=2))
+                self.current_json_file = file_path
+                self.current_json_data = sections
+                self.log_message(f"Opened EPUB file: {file_path}")
+                self.log_message(f"Loaded {intermediate.get_chapter_count()} chapters, {intermediate.get_total_word_count()} words")
+                
+                # Apply initial syntax highlighting
+                if hasattr(self, 'highlight_json'):
+                    self.highlight_json()
+                self.refresh_preview()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open EPUB file:\n{str(e)}")
+                self.log_message(f"Error opening EPUB file: {str(e)}", "ERROR")
+    
     def save_intermediate_as(self):
         """Save the current JSON as an intermediate representation file."""
         try:
@@ -761,6 +804,14 @@ Content elements:
 • {"type": "page_division"} - Creates a horizontal rule
 
 Images should be relative paths from the JSON file location.
+
+Loading EPUB Files:
+You can load EPUB files directly using "Open EPUB..." which will:
+• Extract metadata (title, author, language)
+• Convert chapters to section arrays
+• Extract and save cover and content images
+• Preserve chapter structure and formatting
+• Convert HTML content to appropriate section types
 
 Rich Text Preview:
 The right panel shows your content formatted as rich text with:

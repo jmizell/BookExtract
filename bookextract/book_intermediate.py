@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass, asdict
 from datetime import datetime
+import re
+import html
+from ebooklib import epub
+from bs4 import BeautifulSoup
 
 
 @dataclass
@@ -330,6 +334,190 @@ class BookConverter:
         for chapter in book.chapters:
             for section in chapter.sections:
                 sections.append(section.to_dict())
+        
+        return sections
+    
+    @staticmethod
+    def from_epub_file(epub_path: Union[str, Path], 
+                      extract_images: bool = True,
+                      output_dir: Optional[Union[str, Path]] = None) -> BookIntermediate:
+        """
+        Convert EPUB file to intermediate representation.
+        
+        Args:
+            epub_path: Path to the EPUB file
+            extract_images: Whether to extract images from the EPUB
+            output_dir: Directory to extract images to (defaults to same dir as EPUB)
+        """
+        epub_path = Path(epub_path)
+        if output_dir is None:
+            output_dir = epub_path.parent
+        else:
+            output_dir = Path(output_dir)
+        
+        # Read the EPUB file
+        book = epub.read_epub(str(epub_path))
+        
+        # Extract metadata
+        title = book.get_metadata('DC', 'title')
+        title = title[0][0] if title else "Unknown Title"
+        
+        author = book.get_metadata('DC', 'creator')
+        author = author[0][0] if author else "Unknown Author"
+        
+        language = book.get_metadata('DC', 'language')
+        language = language[0][0] if language else "en"
+        
+        identifier = book.get_metadata('DC', 'identifier')
+        identifier = identifier[0][0] if identifier else None
+        
+        # Extract cover image if available
+        cover_image = None
+        if extract_images:
+            cover_item = None
+            for item in book.get_items():
+                # Look for cover image (type 10 is cover image, type 1 is regular image)
+                if (item.get_type() == 10 and 'cover' in item.get_name().lower()) or \
+                   (item.get_type() == 1 and 'cover' in item.get_name().lower()):
+                    cover_item = item
+                    break
+            
+            if cover_item:
+                cover_filename = f"cover_{epub_path.stem}.png"
+                cover_path = output_dir / cover_filename
+                with open(cover_path, 'wb') as f:
+                    f.write(cover_item.get_content())
+                cover_image = cover_filename
+        
+        metadata = BookMetadata(
+            title=title,
+            author=author,
+            language=language,
+            identifier=identifier,
+            cover_image=cover_image
+        )
+        
+        # Extract chapters and content
+        chapters = []
+        chapter_number = 0
+        
+        # Get all HTML items in reading order
+        html_items = []
+        for item in book.get_items():
+            # Type 9 is HTML document
+            if item.get_type() == 9:
+                html_items.append(item)
+        
+        # Sort by spine order if available
+        spine_order = [item[0] for item in book.spine]
+        html_items.sort(key=lambda x: spine_order.index(x.get_id()) if x.get_id() in spine_order else 999)
+        
+        # Process each HTML document
+        for item in html_items:
+            content = item.get_content().decode('utf-8')
+            soup = BeautifulSoup(content, 'html.parser')
+            
+            # Extract sections from the HTML
+            sections = BookConverter._extract_sections_from_html(soup, extract_images, output_dir, epub_path.stem)
+            
+            if sections:
+                chapter_number += 1
+                # Try to get chapter title from the first heading or use filename
+                chapter_title = BookConverter._extract_chapter_title(soup) or f"Chapter {chapter_number}"
+                
+                chapter = Chapter(
+                    number=chapter_number,
+                    title=chapter_title,
+                    sections=sections,
+                    filename=item.get_name()
+                )
+                chapters.append(chapter)
+        
+        return BookIntermediate(metadata=metadata, chapters=chapters)
+    
+    @staticmethod
+    def _extract_chapter_title(soup: BeautifulSoup) -> Optional[str]:
+        """Extract chapter title from HTML soup."""
+        # Look for headings in order of preference
+        for tag in ['h1', 'h2', 'h3', 'title']:
+            element = soup.find(tag)
+            if element and element.get_text().strip():
+                return element.get_text().strip()
+        return None
+    
+    @staticmethod
+    def _extract_sections_from_html(soup: BeautifulSoup, 
+                                   extract_images: bool,
+                                   output_dir: Path,
+                                   epub_stem: str) -> List[ContentSection]:
+        """Extract content sections from HTML soup."""
+        sections = []
+        image_counter = 1
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Process elements in document order
+        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'blockquote', 'img']):
+            text = element.get_text().strip()
+            
+            if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                # Handle headings
+                if element.name == 'h1':
+                    if text and not any(keyword in text.lower() for keyword in ['chapter', 'part']):
+                        sections.append(ContentSection(type="header", content=text))
+                    elif text and any(keyword in text.lower() for keyword in ['chapter', 'part']):
+                        # Extract chapter number/identifier
+                        chapter_match = re.search(r'(?:chapter|part)\s*(\d+|[ivxlcdm]+)', text.lower())
+                        if chapter_match:
+                            sections.append(ContentSection(type="chapter_header", content=chapter_match.group(1)))
+                        else:
+                            sections.append(ContentSection(type="chapter_header", content=text))
+                elif element.name == 'h2':
+                    if text:
+                        sections.append(ContentSection(type="header", content=text))
+                else:  # h3, h4, h5, h6
+                    if text:
+                        sections.append(ContentSection(type="sub_header", content=text))
+            
+            elif element.name == 'img' and extract_images:
+                # Handle images
+                src = element.get('src')
+                alt = element.get('alt', '')
+                if src:
+                    # Try to find the image in the EPUB
+                    image_filename = f"image_{epub_stem}_{image_counter}.png"
+                    image_counter += 1
+                    sections.append(ContentSection(
+                        type="image",
+                        image=image_filename,
+                        caption=alt if alt else None
+                    ))
+            
+            elif element.name in ['p', 'div']:
+                # Handle paragraphs and divs
+                if text:
+                    # Check if it's bold/strong content
+                    if element.find(['b', 'strong']) and len(element.find_all(['b', 'strong'])) == 1:
+                        strong_text = element.find(['b', 'strong']).get_text().strip()
+                        if strong_text == text:  # Entire paragraph is bold
+                            sections.append(ContentSection(type="bold", content=text))
+                            continue
+                    
+                    # Check if it's indented content
+                    style = element.get('style', '')
+                    css_class = element.get('class', [])
+                    if ('margin-left' in style or 'text-indent' in style or 
+                        any('indent' in cls.lower() for cls in css_class if isinstance(cls, str))):
+                        sections.append(ContentSection(type="block_indent", content=text))
+                    else:
+                        sections.append(ContentSection(type="paragraph", content=text))
+            
+            elif element.name == 'blockquote':
+                # Handle blockquotes
+                if text:
+                    sections.append(ContentSection(type="block_indent", content=text))
         
         return sections
     

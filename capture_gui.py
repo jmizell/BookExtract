@@ -658,6 +658,9 @@ class UnifiedBookTool:
         if success:
             # Set progress bar to maximum
             total_pages = int(self.pages_var.get())
+            # Update initial sequence number for next capture
+            initial_seq = int(self.initial_seq_var.get())
+            self.initial_seq_var.set(str(initial_seq + total_pages))
             self.progress_bar.config(value=total_pages)
             
     def test_coordinates(self):

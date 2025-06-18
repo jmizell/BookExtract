@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import json
 import os
+import re
 import threading
 from pathlib import Path
 from PIL import Image, ImageTk
@@ -65,6 +66,8 @@ class RenderBookGUI:
         menubar.add_cascade(label="Edit", menu=edit_menu)
         edit_menu.add_command(label="Format JSON", command=self.format_json, accelerator="Ctrl+F")
         edit_menu.add_command(label="Validate JSON", command=self.validate_json, accelerator="Ctrl+V")
+        edit_menu.add_command(label="Search...", command=self.search_text, accelerator="Ctrl+H")
+        edit_menu.add_command(label="Replace...", command=self.replace_text, accelerator="Ctrl+Shift+H")
         edit_menu.add_separator()
         edit_menu.add_command(label="Clear Log", command=self.clear_log)
         
@@ -552,6 +555,123 @@ class RenderBookGUI:
             messagebox.showerror("Error", f"Failed to save intermediate file:\n{str(e)}")
             self.log_message(f"Save intermediate error: {str(e)}", "ERROR")
             
+    def search_text(self):
+        """Open search dialog and highlight matches using regex patterns."""
+        search_window = tk.Toplevel(self.root)
+        search_window.title("Regex Search")
+        search_window.geometry("400x200")
+        
+        # Search pattern input
+        ttk.Label(search_window, text="Regex pattern:").pack(pady=5)
+        search_entry = ttk.Entry(search_window, width=40)
+        search_entry.pack(pady=5)
+        search_entry.focus_set()
+        
+        # Case sensitivity option
+        case_sensitive = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            search_window, 
+            text="Case sensitive", 
+            variable=case_sensitive
+        ).pack(pady=5)
+        
+        # Status label for errors
+        status_label = ttk.Label(search_window, text="", foreground="red")
+        status_label.pack(pady=5)
+        
+        def do_search():
+            pattern = search_entry.get()
+            if not pattern:
+                return
+                
+            try:
+                # Remove previous highlights
+                self.json_editor.tag_remove("search", "1.0", tk.END)
+                
+                # Get all text
+                content = self.json_editor.get("1.0", tk.END)
+                
+                # Compile regex with flags
+                flags = 0 if case_sensitive.get() else re.IGNORECASE
+                regex = re.compile(pattern, flags)
+                
+                # Find and highlight all matches
+                for match in regex.finditer(content):
+                    start_pos = f"1.0+{match.start()}c"
+                    end_pos = f"1.0+{match.end()}c"
+                    self.json_editor.tag_add("search", start_pos, end_pos)
+                
+                # Configure highlight style
+                self.json_editor.tag_config("search", background="yellow")
+                status_label.config(text=f"Found {len(regex.findall(content))} matches")
+                
+            except re.error as e:
+                status_label.config(text=f"Invalid regex: {str(e)}")
+        
+        ttk.Button(search_window, text="Search", command=do_search).pack(pady=5)
+        search_window.bind('<Return>', lambda e: do_search())
+
+    def replace_text(self):
+        """Open replace dialog and perform regex replacements."""
+        replace_window = tk.Toplevel(self.root)
+        replace_window.title("Regex Replace")
+        replace_window.geometry("400x250")
+        
+        # Search pattern
+        ttk.Label(replace_window, text="Regex pattern:").pack(pady=5)
+        search_entry = ttk.Entry(replace_window, width=40)
+        search_entry.pack(pady=5)
+        
+        # Replacement text
+        ttk.Label(replace_window, text="Replacement:").pack(pady=5)
+        replace_entry = ttk.Entry(replace_window, width=40)
+        replace_entry.pack(pady=5)
+        
+        # Case sensitivity option
+        case_sensitive = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            replace_window,
+            text="Case sensitive",
+            variable=case_sensitive
+        ).pack(pady=5)
+        
+        # Status label
+        status_label = ttk.Label(replace_window, text="", foreground="red")
+        status_label.pack(pady=5)
+        
+        def do_replace():
+            pattern = search_entry.get()
+            replacement = replace_entry.get()
+            if not pattern:
+                return
+                
+            try:
+                # Get current content
+                content = self.json_editor.get("1.0", tk.END)
+                
+                # Compile regex with flags
+                flags = 0 if case_sensitive.get() else re.IGNORECASE
+                regex = re.compile(pattern, flags)
+                
+                # Perform replacement
+                new_content, count = regex.subn(replacement, content)
+                
+                # Update editor
+                self.json_editor.delete("1.0", tk.END)
+                self.json_editor.insert("1.0", new_content)
+                
+                # Show results
+                status_label.config(text=f"Replaced {count} occurrences")
+                
+                # Highlight remaining matches
+                self.search_text()
+                
+            except re.error as e:
+                status_label.config(text=f"Invalid regex: {str(e)}")
+        
+        ttk.Button(replace_window, text="Replace All", command=do_replace).pack(pady=5)
+        replace_window.bind('<Return>', lambda e: do_replace())
+
     def format_json(self):
         """Format the JSON in the editor."""
         try:

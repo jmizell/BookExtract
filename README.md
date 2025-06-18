@@ -56,7 +56,7 @@ processing and media analysis. ImageMagick provides the `import` command used fo
 ## Quick Start
 
 1. **Setup**: Install dependencies and configure your `.env` file with API credentials
-2. **Capture**: Run `python3 unified_gui.py` to capture and crop pages
+2. **Capture**: Run `python3 capture_gui.py` to capture and crop pages
 3. **OCR**: Run `python3 ocr_gui.py` to extract and clean text with Tesseract OCR and AI
 4. **Edit**: Run `python3 edit_gui.py` to edit content, preview with image rendering, and generate formatted JSON files
 5. **Export**: Run `python3 render_epub.py` for EPUB or `python3 render_m4b.py` for M4B audiobook
@@ -65,23 +65,21 @@ processing and media analysis. ImageMagick provides the `import` command used fo
 
 The digitization process follows these steps in sequence using the GUI applications:
 
-### 1. Unified Capture & Crop (Recommended)
+### 1. Capture & Crop
 
-For a streamlined workflow, use the unified tool that combines capture and crop in one step:
+Use the caputure and crop tool to record cropped screenshots:
 
 ```bash
-python3 unified_gui.py
+python3 capture_gui.py
 ```
 
 The Capture GUI provides:
 - **Image Preview**: Take test screenshots and preview crop areas with interactive selection
 - **Real-time Crop Selection**: Click and drag to select crop coordinates with visual feedback
 - **Sequence Numbering**: Set initial sequence numbers for captured images
-- **Progress Tracking**: Real-time status updates for the unified capture and crop process
+- **Progress Tracking**: Real-time status updates for the capture and crop process
 - **Coordinate Testing**: Test mouse coordinates before starting capture
 - **All-in-One Interface**: Single tool replacing separate capture and crop steps
-
-The unified tool captures screenshots and immediately crops them according to your settings, saving the final cropped images directly to the output folder.
 
 ### 2. Extract Text with OCR
 
@@ -140,21 +138,6 @@ Both export tools provide:
 - Progress tracking during generation
 - Preview capabilities
 - Professional formatting with proper chapters and structure
-
-## Workflow Summary
-
-### Unified Workflow (Recommended)
-1. **unified_gui.py** → Capture and crop pages in one step
-2. **ocr_gui.py** → Extract text using Tesseract OCR + AI processing (3 passes)
-3. **edit_gui.py** → Edit content with image rendering preview and generate formatted JSON files
-4. **render_epub.py** OR **render_m4b.py** → Export to EPUB or M4B audiobook
-
-### Traditional Workflow
-1. **capture_gui.py** → Capture page images from displayed books
-2. **crop_gui.py** → Crop images to focus on content
-3. **ocr_gui.py** → Extract text using Tesseract OCR + AI processing (3 passes)
-4. **edit_gui.py** → Edit content with image rendering preview and generate formatted JSON files
-5. **render_epub.py** OR **render_m4b.py** → Export to EPUB or M4B audiobook
 
 ## Intermediate JSON Format
 

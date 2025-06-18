@@ -17,7 +17,6 @@ from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass, asdict
 from datetime import datetime
 import re
-import html
 from ebooklib import epub
 from bs4 import BeautifulSoup
 

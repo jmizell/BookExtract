@@ -8,10 +8,8 @@ high-quality text formatting and image display.
 
 import tkinter as tk
 import os
-import json
 from typing import List, Tuple, Dict, Any, Optional, Union
 from PIL import Image, ImageTk
-from pathlib import Path
 
 
 class ImageManager:

@@ -13,9 +13,7 @@ import os
 import re
 import threading
 from pathlib import Path
-from PIL import Image, ImageTk
 from pygments.lexers import JsonLexer
-from pygments.token import Token
 from bookextract import BookIntermediate, BookConverter, RichTextRenderer
 
 

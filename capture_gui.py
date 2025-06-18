@@ -13,7 +13,7 @@ import time
 import subprocess
 from pathlib import Path
 from PIL import Image, ImageTk
-from bookextract import BookCapture, ImageProcessor
+from bookextract import BookCapture
 
 
 class UnifiedBookTool:

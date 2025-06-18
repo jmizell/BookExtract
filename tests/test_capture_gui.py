@@ -333,32 +333,5 @@ class TestUnifiedBookTool(unittest.TestCase):
         self.tool.capture_handler.cancel_capture.assert_called_once()
 
 
-class TestUnifiedGUIIntegration(unittest.TestCase):
-    """Integration tests for the unified GUI functionality."""
-    
-    def test_imports_work(self):
-        """Test that all required imports work correctly."""
-        try:
-            from capture_gui import UnifiedBookTool
-            from bookextract import BookCapture, ImageProcessor
-            self.assertTrue(True)  # If we get here, imports worked
-        except ImportError as e:
-            self.fail(f"Import failed: {e}")
-            
-    def test_class_instantiation(self):
-        """Test that classes can be instantiated without GUI."""
-        from bookextract import BookCapture, ImageProcessor
-        
-        # Test BookCapture
-        capture = BookCapture()
-        self.assertIsNotNone(capture)
-        self.assertFalse(capture.is_capturing)
-        
-        # Test ImageProcessor
-        processor = ImageProcessor()
-        self.assertIsNotNone(processor)
-        self.assertEqual(len(processor.image_files), 0)
-
-
 if __name__ == '__main__':
     unittest.main()

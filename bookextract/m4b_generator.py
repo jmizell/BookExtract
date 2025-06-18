@@ -11,14 +11,8 @@ import shutil
 from pathlib import Path
 from typing import Optional, Callable, Dict, Any
 from dataclasses import dataclass
-
-try:
-    from .book_intermediate import BookIntermediate
-    from .intermediate_to_m4b import process_intermediate_file_object, clean_text_for_tts
-except ImportError:
-    # Fallback for direct module execution
-    from bookextract.book_intermediate import BookIntermediate
-    from bookextract.intermediate_to_m4b import process_intermediate_file_object, clean_text_for_tts
+from bookextract.book_intermediate import BookIntermediate
+from bookextract.intermediate_to_m4b import process_intermediate_file_object, clean_text_for_tts
 
 
 @dataclass

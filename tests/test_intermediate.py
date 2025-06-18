@@ -101,44 +101,6 @@ def test_section_array_conversion():
     return intermediate
 
 
-def test_epub_extractor_conversion():
-    """Test conversion from epub_extractor format to intermediate."""
-    print("\nTesting epub_extractor format conversion...")
-    
-    # Create sample data
-    book_info = create_sample_epub_extractor_format()
-    
-    # Save to temporary file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(book_info, f, indent=2)
-        temp_file = f.name
-    
-    try:
-        # Convert to intermediate
-        intermediate = BookConverter.from_epub_extractor(temp_file)
-        
-        # Validate
-        assert intermediate.metadata.title == "The Great Adventure"
-        assert intermediate.metadata.author == "Jane Doe"
-        assert intermediate.get_chapter_count() == 2
-        
-        print(f"✓ Converted from epub_extractor: {intermediate.get_chapter_count()} chapters, {intermediate.get_total_word_count()} words")
-        
-        # Convert back to epub_extractor format
-        book_info_back = BookConverter.to_epub_extractor_format(intermediate)
-        
-        # Validate round-trip
-        assert book_info_back["metadata"]["title"] == "The Great Adventure"
-        assert book_info_back["metadata"]["author"] == "Jane Doe"
-        assert book_info_back["total_chapters"] == 2
-        
-        print("✓ Round-trip conversion successful")
-        return intermediate
-        
-    finally:
-        os.unlink(temp_file)
-
-
 def test_file_operations():
     """Test saving and loading intermediate files."""
     print("\nTesting file operations...")
@@ -191,36 +153,6 @@ def test_content_analysis():
         print(f"✓ Chapter {chapter.number}: {word_count} words, {len(text_content)} characters")
 
 
-def test_format_compatibility():
-    """Test compatibility between different formats."""
-    print("\nTesting format compatibility...")
-    
-    # Start with section array
-    sections = create_sample_section_array()
-    intermediate1 = BookConverter.from_section_array(sections)
-    
-    # Convert to epub_extractor format and back
-    epub_format = BookConverter.to_epub_extractor_format(intermediate1)
-    
-    # Save and reload epub format
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json.dump(epub_format, f, indent=2)
-        temp_file = f.name
-    
-    try:
-        intermediate2 = BookConverter.from_epub_extractor(temp_file)
-        
-        # Compare key attributes
-        assert intermediate1.metadata.title == intermediate2.metadata.title
-        assert intermediate1.metadata.author == intermediate2.metadata.author
-        assert intermediate1.get_chapter_count() == intermediate2.get_chapter_count()
-        
-        print("✓ Format compatibility verified")
-        
-    finally:
-        os.unlink(temp_file)
-
-
 def main():
     """Run all tests."""
     print("BookExtract Intermediate Representation Test Suite")
@@ -229,11 +161,9 @@ def main():
     try:
         # Run tests
         test_section_array_conversion()
-        test_epub_extractor_conversion()
         test_file_operations()
         test_content_analysis()
-        test_format_compatibility()
-        
+
         print("\n" + "=" * 50)
         print("✓ All tests passed! Intermediate representation is working correctly.")
         

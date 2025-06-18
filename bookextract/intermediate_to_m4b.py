@@ -172,26 +172,6 @@ def process_intermediate_file(input_file: Path, output_dir: Path) -> None:
     
     print(f"\nProcessing complete! Files saved to: {output_dir}")
 
-
-def process_legacy_format(input_file: Path, output_dir: Path) -> None:
-    """
-    Process a legacy book_info.json file (for backward compatibility).
-    
-    Args:
-        input_file: Path to book_info.json file
-        output_dir: Directory to save output files
-    """
-    print(f"Processing legacy format file: {input_file}")
-    
-    # Convert to intermediate format first
-    intermediate = BookConverter.from_epub_extractor(input_file)
-    
-    print(f"Converted to intermediate format: {intermediate.metadata.title} by {intermediate.metadata.author}")
-    
-    # Process as intermediate
-    process_intermediate_file_object(intermediate, output_dir)
-
-
 def process_intermediate_file_object(intermediate: BookIntermediate, output_dir: Path) -> None:
     """
     Process an intermediate representation object for M4B generation.

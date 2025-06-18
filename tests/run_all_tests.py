@@ -78,13 +78,12 @@ def main():
     test_files = [
         os.path.join(script_dir, 'test_intermediate.py'),
         os.path.join(script_dir, 'test_epub_generator.py'),
-        os.path.join(script_dir, 'test_image_processor.py'),
         os.path.join(script_dir, 'test_ocr_processor.py'),
         os.path.join(script_dir, 'test_intermediate_to_m4b.py'),
         os.path.join(script_dir, 'test_m4b_generator.py'),
         os.path.join(script_dir, 'test_book_capture.py'),
         os.path.join(script_dir, 'test_epub_generator_extended.py'),
-        os.path.join(script_dir, 'test_unified_gui.py'),
+        os.path.join(script_dir, 'test_capture_gui.py'),
     ]
     
     # Check that all test files exist

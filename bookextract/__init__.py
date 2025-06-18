@@ -11,12 +11,10 @@ from .intermediate_to_m4b import (
     clean_text_for_tts,
     create_metadata_file,
     process_intermediate_file,
-    process_legacy_format,
     process_intermediate_file_object,
 )
 from .m4b_generator import M4bGenerator, M4bConfig
 from .ocr_processor import OCRProcessor
-from .image_processor import ImageProcessor
 from .epub_generator import EpubGenerator
 from .rich_text_renderer import (
     RichTextRenderer,
@@ -36,7 +34,6 @@ __all__ = [
     'M4bGenerator',
     'M4bConfig',
     'OCRProcessor',
-    'ImageProcessor',
     'RichTextRenderer',
     'ImageManager',
     'RichTextFormatter',
@@ -45,6 +42,5 @@ __all__ = [
     'clean_text_for_tts',
     'create_metadata_file',
     'process_intermediate_file',
-    'process_legacy_format',
     'process_intermediate_file_object',
 ]

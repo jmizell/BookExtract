@@ -513,17 +513,6 @@ class UnifiedBookTool:
             )
             return
             
-        # Check PIL dependency
-        try:
-            from PIL import Image
-        except ImportError:
-            messagebox.showerror(
-                "Missing Dependencies", 
-                "Pillow (PIL) is not available.\n\n"
-                "Please install Pillow using:\npip install Pillow"
-            )
-            return
-            
         # Update UI state
         self.start_button.config(state=tk.DISABLED)
         self.cancel_button.config(state=tk.NORMAL)
@@ -533,116 +522,22 @@ class UnifiedBookTool:
         total_pages = int(params['pages'])
         self.progress_bar.config(maximum=total_pages, value=0)
         
-        # Start capture in separate thread
-        self.capture_thread = threading.Thread(target=self.capture_and_crop_worker, args=(params,), daemon=True)
-        self.capture_thread.start()
+        # Set crop parameters
+        self.capture_handler.set_crop_params(
+            x=int(params['crop_x']),
+            y=int(params['crop_y']),
+            width=int(params['crop_width']),
+            height=int(params['crop_height'])
+        )
         
-    def capture_and_crop_worker(self, params):
-        """Worker thread for the unified capture and crop process."""
-        try:
-            total_pages = int(params['pages'])
-            delay = float(params['delay'])
-            save_location = Path(params['save_location'])
-            initial_seq = int(params['initial_seq'])
-            
-            next_x = int(params['next_x'])
-            next_y = int(params['next_y'])
-            safe_x = int(params['safe_x'])
-            safe_y = int(params['safe_y'])
-            
-            crop_x = int(params['crop_x'])
-            crop_y = int(params['crop_y'])
-            crop_width = int(params['crop_width'])
-            crop_height = int(params['crop_height'])
-            
-            # Create output directory
-            save_location.mkdir(parents=True, exist_ok=True)
-
-            # Set the capturing flag to True
-            self.capture_handler.is_capturing = True
-            self.capture_handler.total_pages = total_pages
-
-            self.root.after(0, self.log_message, f"Starting unified capture and crop of {total_pages} pages...")
-
-            self.log_message(f"Starting unified capture and crop of {total_pages} pages...")
-            
-            for i in range(total_pages):
-                if not self.capture_handler.is_capturing:
-                    break
-
-                # Update current page tracking
-                self.capture_handler.current_page = i
-
-                page_num = f"{i + initial_seq:03d}"
-                temp_filename = save_location / f"temp_page{page_num}.png"
-                final_filename = save_location / f"page{page_num}.png"
-                
-                # Update progress
-                self.root.after(0, self.update_progress, i, f"Capturing and cropping page {i+1}/{total_pages}")
-                
-                try:
-                    # Take screenshot
-                    subprocess.run(['import', '-window', 'root', str(temp_filename)], 
-                                 check=True, capture_output=True)
-                    
-                    # Crop the image using PIL
-                    with Image.open(temp_filename) as img:
-                        # Define crop box (left, top, right, bottom)
-                        crop_box = (crop_x, crop_y, crop_x + crop_width, crop_y + crop_height)
-                        
-                        # Ensure crop box is within image bounds
-                        img_width, img_height = img.size
-                        crop_box = (
-                            max(0, min(crop_box[0], img_width)),
-                            max(0, min(crop_box[1], img_height)),
-                            max(0, min(crop_box[2], img_width)),
-                            max(0, min(crop_box[3], img_height))
-                        )
-                        
-                        # Crop and save the image
-                        cropped_img = img.crop(crop_box)
-                        cropped_img.save(final_filename)
-                    
-                    # Remove temporary file
-                    temp_filename.unlink()
-                    
-                    # Move mouse to next button and click
-                    subprocess.run(['xdotool', 'mousemove', str(next_x), str(next_y)], 
-                                 check=True, capture_output=True)
-                    subprocess.run(['xdotool', 'click', '1'], 
-                                 check=True, capture_output=True)
-                    
-                    # Move mouse to safe area and click
-                    subprocess.run(['xdotool', 'mousemove', str(safe_x), str(safe_y)], 
-                                 check=True, capture_output=True)
-                    subprocess.run(['xdotool', 'click', '1'], 
-                                 check=True, capture_output=True)
-                    
-                    # Wait before next capture
-                    time.sleep(delay)
-                    
-                except subprocess.CalledProcessError as e:
-                    self.root.after(0, self.log_message, f"Error capturing page {i+1}: {e}")
-                    self.root.after(0, self.on_capture_complete, False, f"Capture failed at page {i+1}: {e}")
-                    return
-                except Exception as e:
-                    self.root.after(0, self.log_message, f"Error processing page {i+1}: {e}")
-                    self.root.after(0, self.on_capture_complete, False, f"Processing failed at page {i+1}: {e}")
-                    return
-                    
-            # Capture completed or cancelled
-            if self.capture_handler.is_capturing:
-                self.root.after(0, self.log_message, f"Unified capture and crop completed successfully! {total_pages} pages saved to {save_location}")
-                self.root.after(0, self.on_capture_complete, True, f"Completed! Captured and cropped {total_pages} pages")
-            else:
-                self.root.after(0, self.log_message, f"Capture cancelled by user after {i} pages")
-                self.root.after(0, self.on_capture_complete, False, f"Cancelled after {i} pages")
-                
-        except Exception as e:
-            self.root.after(0, self.log_message, f"Unexpected error: {e}")
-            self.root.after(0, self.on_capture_complete, False, f"Unexpected error: {e}")
-        finally:
-            self.capture_handler.is_capturing = False
+        # Start capture in separate thread
+        self.capture_handler.is_capturing = True
+        self.capture_thread = threading.Thread(
+            target=self.capture_handler.capture_and_crop_pages,
+            args=(params,),
+            daemon=False
+        )
+        self.capture_thread.start()
             
     def update_progress(self, current, status):
         """Update progress bar and status (called from capture handler)."""
